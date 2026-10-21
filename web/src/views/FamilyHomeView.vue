@@ -54,6 +54,35 @@
       <a-tabs v-model:activeKey="activeTab" class="family-tabs">
         <!-- 今日状态 -->
         <a-tab-pane key="status" tab="今日状态">
+          <!-- 依从率只给子女看：老人看到"完成率"会把陪伴变成考核 -->
+          <div v-if="!isElderUser && stats" class="stats-card">
+            <div class="stats-head">
+              <div class="stats-rate">
+                <span class="rate-value" :class="statsRateClass">{{ statsRateText }}</span>
+                <span class="rate-label">近 {{ stats.range.days }} 天完成率</span>
+              </div>
+              <div class="stats-counts">
+                <span class="count-item"><i class="dot is-done"></i>已完成 {{ stats.summary.completed }}</span>
+                <span class="count-item"><i class="dot is-failed"></i>未完成 {{ stats.summary.failed }}</span>
+                <span class="count-item"><i class="dot is-pending"></i>待确认 {{ stats.summary.pending }}</span>
+              </div>
+            </div>
+
+            <p v-if="stats.summary.total === 0" class="stats-empty">最近 {{ stats.range.days }} 天还没有记录</p>
+            <div v-else class="stats-bars">
+              <div v-for="day in stats.by_day" :key="day.date" class="bar-col" :title="dayTitle(day)">
+                <div class="bar-track">
+                  <div
+                    class="bar-fill"
+                    :class="day.total ? rateLevel(day.rate) : 'is-empty'"
+                    :style="{ height: barHeight(day) }"
+                  ></div>
+                </div>
+                <span class="bar-label">{{ dayLabel(day.date) }}</span>
+              </div>
+            </div>
+          </div>
+
           <a-spin :spinning="loadingToday">
             <a-empty v-if="todayItems.length === 0" description="老人今天还没有提醒" />
 
@@ -233,6 +262,7 @@ const errorMessage = ref('')
 
 const todayItems = ref([])
 const loadingToday = ref(false)
+const stats = ref(null)
 
 const reminders = ref([])
 const loadingReminders = ref(false)
@@ -320,6 +350,48 @@ async function loadToday({ silent = false } = {}) {
   }
 }
 
+const WEEKDAY_LABELS = '日一二三四五六'
+
+const statsRateText = computed(() => {
+  const rate = stats.value?.summary.rate
+  return rate === null || rate === undefined ? '—' : `${Math.round(rate * 100)}%`
+})
+
+const statsRateClass = computed(() => rateLevel(stats.value?.summary.rate))
+
+/** 完成率分档：≥80% 好、≥50% 一般、其余偏低。null 表示还没有可统计的记录。 */
+function rateLevel(rate) {
+  if (rate === null || rate === undefined) return 'is-none'
+  if (rate >= 0.8) return 'is-good'
+  if (rate >= 0.5) return 'is-mid'
+  return 'is-low'
+}
+
+function barHeight(day) {
+  if (!day.total) return '0%'
+  // 有记录却一条没完成时留个可见的矮桩，否则和"当天无记录"看起来一样
+  return `${Math.max(6, Math.round(day.rate * 100))}%`
+}
+
+function dayLabel(date) {
+  return WEEKDAY_LABELS[dayjs(date).day()]
+}
+
+function dayTitle(day) {
+  const label = dayjs(day.date).format('M月D日')
+  return day.total ? `${label} 完成 ${day.completed}/${day.total}` : `${label} 无记录`
+}
+
+async function loadStats({ silent = false } = {}) {
+  // 老人看自己的完成率会把陪伴变成考核，这里直接不查
+  if (!currentElderUid.value || isElderUser.value) return
+  try {
+    stats.value = await reminderApi.stats(currentElderUid.value, 7)
+  } catch (error) {
+    if (!silent) errorMessage.value = error.message || '加载完成率失败'
+  }
+}
+
 async function loadReminders() {
   if (!currentElderUid.value) return
   loadingReminders.value = true
@@ -350,18 +422,25 @@ function handleElderChange() {
   todayItems.value = []
   reminders.value = []
   messages.value = []
+  stats.value = null
   refreshActiveTab()
 }
 
 function refreshActiveTab() {
-  if (activeTab.value === 'status') loadToday()
+  if (activeTab.value === 'status') {
+    loadToday()
+    loadStats()
+  }
   if (activeTab.value === 'manage') loadReminders()
   if (activeTab.value === 'message') loadMessages()
 }
 
 watch(activeTab, (tab) => {
   if (!currentElderUid.value) return
-  if (tab === 'status') loadToday()
+  if (tab === 'status') {
+    loadToday()
+    loadStats()
+  }
   if (tab === 'manage') loadReminders()
   if (tab === 'message') loadMessages()
 })
@@ -439,6 +518,7 @@ let statusPollTimer = null
 function refreshStatusSilently() {
   if (activeTab.value !== 'status' || document.hidden) return
   loadToday({ silent: true })
+  loadStats({ silent: true })
 }
 
 function stopStatusPolling() {
@@ -460,6 +540,7 @@ function handleVisibilityChange() {
 onMounted(async () => {
   await loadElders()
   await loadToday()
+  await loadStats()
   startStatusPolling()
   document.addEventListener('visibilitychange', handleVisibilityChange)
 })
@@ -570,6 +651,150 @@ onUnmounted(() => {
   margin-top: 16px;
   font-size: 14px;
   color: var(--gray-600, #646a73);
+}
+
+/* 近 7 天依从率 */
+.stats-card {
+  margin-bottom: 20px;
+  padding: 18px 20px 12px;
+  border: 1px solid var(--gray-100, #eff2f2);
+  border-radius: 14px;
+  background: var(--gray-25, #f8fafa);
+}
+
+.stats-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.stats-rate {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.rate-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--gray-900, #1e1f1f);
+
+  &.is-good {
+    color: #52c41a;
+  }
+
+  &.is-mid {
+    color: #faad14;
+  }
+
+  &.is-low {
+    color: #ff4d4f;
+  }
+
+  &.is-none {
+    color: var(--gray-400, #bdbfbf);
+  }
+}
+
+.rate-label {
+  font-size: 14px;
+  color: var(--gray-600, #697070);
+}
+
+.stats-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--gray-600, #697070);
+}
+
+.count-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gray-400, #bdbfbf);
+
+  &.is-done {
+    background: #52c41a;
+  }
+
+  &.is-failed {
+    background: #ff4d4f;
+  }
+
+  &.is-pending {
+    background: var(--gray-300, #d0d3d3);
+  }
+}
+
+.stats-empty {
+  margin: 14px 0 4px;
+  font-size: 14px;
+  color: var(--gray-500, #8f959e);
+}
+
+.stats-bars {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.bar-track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 44px;
+  height: 64px;
+  border-radius: 6px;
+  background: var(--gray-100, #eff2f2);
+  overflow: hidden;
+}
+
+.bar-fill {
+  width: 100%;
+  border-radius: 6px 6px 0 0;
+  background: var(--gray-300, #d0d3d3);
+  transition: height 0.3s ease;
+
+  &.is-good {
+    background: #52c41a;
+  }
+
+  &.is-mid {
+    background: #faad14;
+  }
+
+  &.is-low {
+    background: #ff4d4f;
+  }
+
+  &.is-empty {
+    background: transparent;
+  }
+}
+
+.bar-label {
+  font-size: 12px;
+  color: var(--gray-500, #8f959e);
 }
 
 .manage-bar {

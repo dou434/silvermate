@@ -1,0 +1,26 @@
+{
+  "name": "银发智伴",
+  "short_name": "银发智伴",
+  "description": "智慧养老 AI 助手：健康咨询、用药提醒、家人关怀",
+  "lang": "zh-CN",
+  "start_url": "/elder",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafa",
+  "theme_color": "#e8712a",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

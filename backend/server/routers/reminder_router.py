@@ -59,6 +59,17 @@ async def list_today_reminders(
     return await reminder_service.list_today(db, current_user, target_uid=target_uid)
 
 
+@reminders.get("/stats")
+async def reminder_stats(
+    target_uid: str | None = Query(default=None, description="统计某位老人的提醒，缺省为自己"),
+    days: int = Query(default=7, ge=1, le=30, description="统计最近多少天"),
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """近 N 天依从性统计：整体完成率、逐日明细、分类明细。"""
+    return await reminder_service.adherence_stats(db, current_user, target_uid=target_uid, days=days)
+
+
 @reminders.post("", status_code=status.HTTP_201_CREATED)
 async def create_reminder(
     data: ReminderCreateRequest,

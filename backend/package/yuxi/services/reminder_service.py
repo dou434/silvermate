@@ -481,6 +481,93 @@ async def list_today(db: AsyncSession, current_user: User, *, target_uid: str | 
     }
 
 
+def _empty_stats_bucket() -> dict:
+    return {"total": 0, "completed": 0, "failed": 0, "pending": 0, "rate": None}
+
+
+def _count_into(bucket: dict, occurrence_status: str) -> None:
+    """把一个执行记录累加进统计桶。
+
+    ``done`` 算完成；``skipped``（老人自述没做到）与 ``missed``（超时未处理）
+    算未完成；其余（``pending``/``delivered``/``confirmed``）尚未定性，
+    只计入 total，不进完成率分母 —— 否则"今天还有 3 条没到点"会把历史完成率拉低。
+    """
+    bucket["total"] += 1
+    if occurrence_status == "done":
+        bucket["completed"] += 1
+    elif occurrence_status in {"skipped", "missed"}:
+        bucket["failed"] += 1
+    else:
+        bucket["pending"] += 1
+
+    settled = bucket["completed"] + bucket["failed"]
+    bucket["rate"] = round(bucket["completed"] / settled, 3) if settled else None
+
+
+async def _load_categories(db: AsyncSession, reminder_ids: set[int]) -> dict[int, str]:
+    """一次查出这些提醒的分类，避免按条查询。"""
+    if not reminder_ids:
+        return {}
+    result = await db.execute(select(Reminder.id, Reminder.category).where(Reminder.id.in_(reminder_ids)))
+    return {reminder_id: category for reminder_id, category in result.all()}
+
+
+async def adherence_stats(
+    db: AsyncSession, current_user: User, *, target_uid: str | None = None, days: int = 7
+) -> dict:
+    """近 N 天的依从性统计，供子女端看"这几天做得怎么样"。
+
+    Args:
+        target_uid: 统计对象，缺省为自己。
+        days: 统计天数，限制在 1-30 天。
+
+    Returns:
+        含 ``summary``（整体完成率）、``by_day``（逐日明细，缺的日期补 0 而不是断档）、
+        ``by_category``（分类明细，按条数降序）三部分。
+    """
+    target = (target_uid or current_user.uid).strip()
+    if target != current_user.uid:
+        await assert_can_view_target(db, current_user, target)
+
+    span = max(1, min(int(days), 30))
+    today = shanghai_now().date()
+    first_day = today - timedelta(days=span - 1)
+    start, _ = day_range_utc(first_day)
+    _, end = day_range_utc(today)
+
+    occurrences = await repository.list_occurrences_between(db, target_uids=[target], start=start, end=end)
+    categories = await _load_categories(db, {item.reminder_id for item in occurrences})
+
+    # 先铺满整段日期，让前端拿到的永远是连续的 span 根柱子
+    buckets = {first_day + timedelta(days=offset): _empty_stats_bucket() for offset in range(span)}
+    category_buckets: dict[str, dict] = {}
+
+    for item in occurrences:
+        _count_into(buckets[to_shanghai(item.scheduled_at).date()], item.status)
+        category = categories.get(item.reminder_id) or "other"
+        _count_into(category_buckets.setdefault(category, _empty_stats_bucket()), item.status)
+
+    summary = _empty_stats_bucket()
+    for bucket in buckets.values():
+        summary["total"] += bucket["total"]
+        summary["completed"] += bucket["completed"]
+        summary["failed"] += bucket["failed"]
+        summary["pending"] += bucket["pending"]
+    settled = summary["completed"] + summary["failed"]
+    summary["rate"] = round(summary["completed"] / settled, 3) if settled else None
+
+    return {
+        "target_uid": target,
+        "range": {"days": span, "start": first_day.isoformat(), "end": today.isoformat()},
+        "summary": summary,
+        "by_day": [{"date": day.isoformat(), **bucket} for day, bucket in buckets.items()],
+        "by_category": [
+            {"category": category, **bucket}
+            for category, bucket in sorted(category_buckets.items(), key=lambda pair: -pair[1]["total"])
+        ],
+    }
+
+
 async def assert_can_view_target(db: AsyncSession, current_user: User, target_uid: str) -> None:
     """校验能否查看某个老人的提醒。"""
     if target_uid == current_user.uid:

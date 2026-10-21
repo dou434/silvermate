@@ -13,6 +13,13 @@ export const reminderApi = {
   today: (targetUid) =>
     apiGet(`/api/reminders/today${targetUid ? `?target_uid=${encodeURIComponent(targetUid)}` : ''}`),
 
+  /** 近 N 天依从性统计（完成率、逐日明细、分类明细） */
+  stats: (targetUid, days = 7) => {
+    const query = new URLSearchParams({ days: String(days) })
+    if (targetUid) query.set('target_uid', targetUid)
+    return apiGet(`/api/reminders/stats?${query.toString()}`)
+  },
+
   /** 创建提醒。target_uid 留空表示给自己建 */
   create: (payload) => apiPost('/api/reminders', payload),
 
