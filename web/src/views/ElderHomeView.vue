@@ -119,17 +119,24 @@ import { Users } from 'lucide-vue-next'
 
 import { reminderApi } from '@/apis/reminder_api'
 import ReminderAlertModal from '@/components/elder/ReminderAlertModal.vue'
+import { playAlertChime, useAlertChime } from '@/composables/useAlertChime'
 import { useTTS } from '@/composables/useTTS'
 import { useFamilyStore } from '@/stores/family'
 import { useUserStore } from '@/stores/user'
 
 // 到点提醒的轮询间隔：页面停留时每分钟检查一次，确保不用刷新也能收到
 const POLL_INTERVAL_MS = 60 * 1000
+/** 先响铃再念，避免两个声音叠在一起 */
+const SPEAK_DELAY_MS = 700
 
 const router = useRouter()
 const userStore = useUserStore()
 const familyStore = useFamilyStore()
 const tts = useTTS()
+// 注册首次手势解锁，之后到点铃声才能真正发声
+useAlertChime()
+/** 延迟播报的定时器，弹窗被提前关掉时要取消 */
+let speakTimer = null
 
 const items = ref([])
 const loading = ref(false)
@@ -245,7 +252,12 @@ function shouldReadAloud() {
   return localStorage.getItem('elderly_auto_read') === 'true'
 }
 
-/** 弹最早一条"已到点但还没确认"的提醒，并按需语音播报。 */
+/** 是否开启提醒铃声（适老化设置里配置，默认开） */
+function shouldPlayChime() {
+  return localStorage.getItem('elderly_alert_sound') !== 'false'
+}
+
+/** 弹最早一条"已到点但还没确认"的提醒，先响铃、再按需语音播报。 */
 function showNextDueAlert() {
   if (alertOpen.value) return
 
@@ -257,12 +269,29 @@ function showNextDueAlert() {
   announcedIds.add(next.id)
   alertItem.value = next
   alertOpen.value = true
+
+  const chimePlayed = shouldPlayChime()
+  if (chimePlayed) playAlertChime()
+
   if (shouldReadAloud()) {
-    tts.speak(`提醒时间到了。${next.title}`, `reminder-${next.id}`)
+    const speak = () => tts.speak(`提醒时间到了。${next.title}`, `reminder-${next.id}`)
+    if (chimePlayed) {
+      speakTimer = setTimeout(speak, SPEAK_DELAY_MS)
+    } else {
+      speak()
+    }
+  }
+}
+
+function clearSpeakTimer() {
+  if (speakTimer) {
+    clearTimeout(speakTimer)
+    speakTimer = null
   }
 }
 
 function closeAlert() {
+  clearSpeakTimer()
   alertOpen.value = false
   alertItem.value = null
   tts.stop()
@@ -320,6 +349,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  clearSpeakTimer()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   tts.stop()
 })

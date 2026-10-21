@@ -11,6 +11,8 @@ __pycache__/
 
 ### Vue gitignore
 dist
+# 本地验证用的独立构建目录（safe-delete 会拦住清空 dist 的操作，改用新目录绕过）
+dist-*
 node_modules
 
 ### 本地调试产物（截图、临时校验脚本、容器备份清单）

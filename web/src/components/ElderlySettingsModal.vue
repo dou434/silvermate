@@ -46,6 +46,19 @@
           </div>
         </a-form-item>
 
+        <!-- 提醒铃声 -->
+        <a-form-item label="提醒铃声">
+          <a-switch
+            v-model:checked="alertSound"
+            size="large"
+            checked-children="开"
+            un-checked-children="关"
+          />
+          <div class="font-size-preview">
+            开启后，提醒到点会先响铃再朗读。关掉则没有任何声音提示
+          </div>
+        </a-form-item>
+
         <!-- 主题色 -->
         <a-form-item label="主题色">
           <div class="color-scheme-options">
@@ -80,6 +93,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
+import { playAlertChime } from '@/composables/useAlertChime'
 import { useThemeStore, COLOR_SCHEMES } from '@/stores/theme'
 
 const themeStore = useThemeStore()
@@ -99,6 +113,8 @@ const visible = computed({
 const emergencyContact = ref('')
 const fontSizePref = ref('large')
 const autoRead = ref(false)
+// 默认开：提醒的核心就是"要被听见"，默认关等于没做这个功能
+const alertSound = ref(true)
 
 // 初始化：从 localStorage 读取
 const savedContact = localStorage.getItem('elderly_emergency_contact')
@@ -109,6 +125,9 @@ if (savedFont) fontSizePref.value = savedFont
 
 const savedAutoRead = localStorage.getItem('elderly_auto_read')
 if (savedAutoRead === 'true') autoRead.value = true
+
+// 只有明确存过 'false' 才算关；没存过按默认开处理
+if (localStorage.getItem('elderly_alert_sound') === 'false') alertSound.value = false
 
 const previewStyle = computed(() => {
   const sizes = { normal: '14px', large: '18px', xlarge: '22px' }
@@ -125,6 +144,12 @@ function handleSave() {
 
   // 保存自动朗读设置
   localStorage.setItem('elderly_auto_read', autoRead.value ? 'true' : 'false')
+
+  // 保存提醒铃声设置
+  localStorage.setItem('elderly_alert_sound', alertSound.value ? 'true' : 'false')
+
+  // 点保存本身就是一次用户手势，此时试听能让老人当场确认音量是否合适
+  if (alertSound.value) playAlertChime()
 
   // 通知紧急按钮组件更新
   window.dispatchEvent(new Event('elderly-contact-updated'))
