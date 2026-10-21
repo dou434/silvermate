@@ -55,9 +55,19 @@ def ensure_shanghai(value: dt.datetime) -> dt.datetime:
 
 
 def utc_isoformat(value: dt.datetime | None = None) -> str:
-    """Return an ISO 8601 string in UTC with a trailing Z suffix."""
-    value = ensure_utc(value or utc_now())
-    iso_string = value.isoformat()
+    """Return an ISO 8601 string in UTC with a trailing Z suffix.
+
+    Naive datetimes are treated as UTC, matching what the database stores
+    (``utc_now_naive``). Use ``shanghai_isoformat`` instead when a user-facing
+    Asia/Shanghai timestamp is needed.
+    """
+    if value is None:
+        value = utc_now()
+    elif value.tzinfo is None:
+        # 数据库里的 DateTime 列存的就是 naive UTC，不能再按上海时间二次换算，
+        # 否则所有 to_dict() 的结果都会整体偏移 -8 小时。
+        value = value.replace(tzinfo=UTC)
+    iso_string = value.astimezone(UTC).isoformat()
     if iso_string.endswith(_ISO_Z_SUFFIX):
         return iso_string.replace(_ISO_Z_SUFFIX, "Z")
     return iso_string

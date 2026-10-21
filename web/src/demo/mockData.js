@@ -2,7 +2,7 @@
  * Demo 模式 Mock 数据
  *
  * 所有 API 返回的假数据都在这里定义，按 URL pattern 匹配。
- * 数据来源于真实系统截图，模拟银发守护的主要功能展示。
+ * 数据来源于真实系统截图，模拟银发智伴的主要功能展示。
  */
 
 // ========== 系统/品牌 ==========
@@ -16,12 +16,12 @@ const systemInfo = {
   success: true,
   data: {
     organization: {
-      name: '银发守护',
+      name: '银发智伴',
       logo: DEMO_LOGO_SVG,
       avatar: DEMO_LOGO_SVG
     },
     branding: {
-      name: '银发守护 Silver Guardian',
+      name: '银发智伴 SilverMate',
       title: '智慧养老 AI 助手',
       subtitle: '让科技温暖银发生活',
       subtitles: [
@@ -32,7 +32,7 @@ const systemInfo = {
       ]
     },
     footer: {
-      copyright: '© 2026 银发守护 Silver Guardian',
+      copyright: '© 2026 银发智伴 SilverMate',
       user_agreement_url: '',
       privacy_policy_url: ''
     }
@@ -98,9 +98,9 @@ const agents = {
       config_json: {
         context: {
           model: 'deepseek:deepseek-chat',
-          system_prompt: '你是银发守护健康顾问，专门为老年人提供健康咨询服务。',
+          system_prompt: '你是银发智伴健康顾问，专门为老年人提供健康咨询服务。',
           temperature: 0.7,
-          knowledges: ['银发守护知识库'],
+          knowledges: ['银发智伴知识库'],
           skills: ['elderly-assessment', 'care-plan-generator', 'knowledge-base']
         }
       },
@@ -125,9 +125,9 @@ const agents = {
           type: 'list',
           kind: 'knowledge_select',
           label: '知识库',
-          default: ['银发守护知识库'],
+          default: ['银发智伴知识库'],
           options: [
-            { label: '银发守护知识库', value: '银发守护知识库' }
+            { label: '银发智伴知识库', value: '银发智伴知识库' }
           ]
         },
         skills: {
@@ -156,7 +156,7 @@ const agents = {
           model: 'deepseek:deepseek-chat',
           system_prompt: '你是养老政策助手，专门解答养老政策相关问题。',
           temperature: 0.3,
-          knowledges: ['银发守护知识库'],
+          knowledges: ['银发智伴知识库'],
           skills: ['knowledge-base']
         }
       },
@@ -175,7 +175,7 @@ const agents = {
           model: 'deepseek:deepseek-chat',
           system_prompt: '你是护理知识助手，为照护者提供专业的护理指导。',
           temperature: 0.5,
-          knowledges: ['银发守护知识库'],
+          knowledges: ['银发智伴知识库'],
           skills: ['knowledge-base', 'care-plan-generator']
         }
       },
@@ -373,7 +373,7 @@ const knowledgeBases = {
   databases: [
     {
       kb_id: 'kb_9dhul7i5k6',
-      name: '银发守护知识库',
+      name: '银发智伴知识库',
       description: '养老领域知识库，包含政策法规、健康管理、护理规范、防诈骗指南',
       kb_type: 'milvus',
       file_count: 4,
@@ -743,7 +743,7 @@ export const mockRoutes = {
   // 聊天（非流式）
   'POST /api/chat/call': (data) => ({
     response: data.query.includes('标题')
-      ? '银发守护对话'
+      ? '银发智伴对话'
       : getMockReply(data.query || '')
   }),
 

@@ -61,7 +61,7 @@
         class="message-md"
       />
 
-      <!-- 银发守护：语音朗读按钮（仅AI消息且已完成时显示） -->
+      <!-- 银发智伴：语音朗读按钮（仅AI消息且已完成时显示） -->
       <div
         v-if="tts.isSupported.value && parsedData.content && message.type === 'ai'"
         class="tts-bar"
@@ -342,7 +342,7 @@ const parsedData = computed(() => {
   }
 })
 
-// === 银发守护：语音朗读 ===
+// === 银发智伴：语音朗读 ===
 const tts = useTTS()
 const messageKey = computed(() => props.message.id || `msg-${props.message.content?.slice(0, 20)}`)
 

@@ -8,6 +8,10 @@ from psycopg_pool import AsyncConnectionPool
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
+
+# 导入即完成 ORM 注册：家庭养老业务表挂在同一个 BusinessBase.metadata 上，
+# create_all 与 ensure_business_schema 都会覆盖到。
+from yuxi.storage.postgres import models_family  # noqa: F401
 from yuxi.storage.postgres.models_business import AGENT_RUN_TERMINAL_STATUSES
 from yuxi.storage.postgres.models_business import Base as BusinessBase
 from yuxi.storage.postgres.models_knowledge import Base as KnowledgeBase
@@ -712,6 +716,86 @@ class PostgresManager(metaclass=SingletonMeta):
             "CREATE INDEX IF NOT EXISTS ix_conversations_is_pinned ON conversations(is_pinned)",
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_model_providers_provider_id ON model_providers(provider_id)",
             "CREATE INDEX IF NOT EXISTS ix_model_providers_is_enabled ON model_providers(is_enabled)",
+            # region 家庭养老业务表
+            # 三张表都已在 models_family 中注册到同一个 metadata，create_all 会先建；
+            # 这里保留幂等 DDL 作为兜底，索引名与 ORM 声明保持一致，避免重复建索引。
+            """
+            CREATE TABLE IF NOT EXISTS family_links (
+                id SERIAL PRIMARY KEY,
+                elder_uid VARCHAR(64) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+                child_uid VARCHAR(64) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+                relation VARCHAR(32) NOT NULL DEFAULT '子女',
+                status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                invited_by VARCHAR(64) NOT NULL,
+                created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'utc'),
+                updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'utc'),
+                CONSTRAINT uq_family_links_pair UNIQUE (elder_uid, child_uid)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_family_links_elder_uid ON family_links(elder_uid)",
+            "CREATE INDEX IF NOT EXISTS ix_family_links_child_uid ON family_links(child_uid)",
+            "CREATE INDEX IF NOT EXISTS ix_family_links_status ON family_links(status)",
+            "CREATE INDEX IF NOT EXISTS ix_family_links_elder_status ON family_links(elder_uid, status)",
+            "CREATE INDEX IF NOT EXISTS ix_family_links_child_status ON family_links(child_uid, status)",
+            """
+            CREATE TABLE IF NOT EXISTS reminders (
+                id SERIAL PRIMARY KEY,
+                owner_uid VARCHAR(64) NOT NULL,
+                target_uid VARCHAR(64) NOT NULL,
+                title VARCHAR(120) NOT NULL,
+                content TEXT,
+                category VARCHAR(32) NOT NULL DEFAULT 'other',
+                remind_at TIMESTAMP NOT NULL,
+                repeat_rule JSONB NOT NULL DEFAULT '{}'::jsonb,
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                deleted_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'utc'),
+                updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'utc')
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_reminders_owner_uid ON reminders(owner_uid)",
+            "CREATE INDEX IF NOT EXISTS ix_reminders_target_uid ON reminders(target_uid)",
+            "CREATE INDEX IF NOT EXISTS ix_reminders_remind_at ON reminders(remind_at)",
+            "CREATE INDEX IF NOT EXISTS ix_reminders_enabled ON reminders(enabled)",
+            "CREATE INDEX IF NOT EXISTS ix_reminders_target_time ON reminders(target_uid, remind_at)",
+            "CREATE INDEX IF NOT EXISTS ix_reminders_enabled_time ON reminders(enabled, remind_at)",
+            """
+            CREATE TABLE IF NOT EXISTS reminder_occurrences (
+                id SERIAL PRIMARY KEY,
+                reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+                target_uid VARCHAR(64) NOT NULL,
+                scheduled_at TIMESTAMP NOT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                confirmed_at TIMESTAMP,
+                finished_at TIMESTAMP,
+                note TEXT,
+                created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'utc'),
+                CONSTRAINT uq_reminder_occurrences_slot UNIQUE (reminder_id, scheduled_at)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_reminder_occurrences_reminder_id ON reminder_occurrences(reminder_id)",
+            "CREATE INDEX IF NOT EXISTS ix_reminder_occurrences_target_uid ON reminder_occurrences(target_uid)",
+            "CREATE INDEX IF NOT EXISTS ix_reminder_occurrences_scheduled_at ON reminder_occurrences(scheduled_at)",
+            "CREATE INDEX IF NOT EXISTS ix_reminder_occurrences_status ON reminder_occurrences(status)",
+            (
+                "CREATE INDEX IF NOT EXISTS ix_reminder_occurrences_target_status "
+                "ON reminder_occurrences(target_uid, status)"
+            ),
+            """
+            CREATE TABLE IF NOT EXISTS family_messages (
+                id SERIAL PRIMARY KEY,
+                from_uid VARCHAR(64) NOT NULL,
+                to_uid VARCHAR(64) NOT NULL,
+                content TEXT NOT NULL,
+                read_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'utc')
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_family_messages_from_uid ON family_messages(from_uid)",
+            "CREATE INDEX IF NOT EXISTS ix_family_messages_to_uid ON family_messages(to_uid)",
+            "CREATE INDEX IF NOT EXISTS ix_family_messages_created_at ON family_messages(created_at)",
+            ("CREATE INDEX IF NOT EXISTS ix_family_messages_to_read ON family_messages(to_uid, read_at, created_at)"),
+            # endregion
         ]
         async with self.async_engine.begin() as conn:
             # 历史未绑定用户的 API Key 会在下方迁移语句里被静默删除，先计数告警

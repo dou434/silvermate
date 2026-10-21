@@ -7,12 +7,14 @@ import json
 import time
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from arq import cron
+from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
 from yuxi.agents.mcp.service import ensure_builtin_mcp_servers_in_db
 from yuxi.agents.skills.service import init_builtin_skills
 from yuxi.config import config as sys_config
 from yuxi.repositories.agent_run_repository import TERMINAL_RUN_STATUSES, AgentRunRepository
+from yuxi.services import reminder_service
 from yuxi.services.chat_service import stream_agent_chat, stream_agent_resume
 from yuxi.services.input_message_service import restore_chat_input_message
 from yuxi.services.run_queue_service import (
@@ -547,6 +549,48 @@ async def _load_input_message(message_id: int | None) -> Message | None:
         return result.scalar_one_or_none()
 
 
+# =============================================================================
+# 提醒调度（ARQ 定时任务）
+# =============================================================================
+
+# 调度器互斥锁 key：多副本部署时保证同一时刻只有一个 worker 在扫描
+REMINDER_SCAN_LOCK_KEY = 982451653
+
+
+async def scan_due_reminders(ctx) -> dict:
+    """每分钟扫描提醒，补齐当日执行记录并推进到点/超时状态。
+
+    多副本下用 PostgreSQL advisory lock 抢占：拿不到锁说明别的 worker 正在扫，
+    本轮直接跳过，下一分钟再来。锁在 finally 中释放，避免连接回到池里仍持锁。
+    """
+    del ctx
+
+    async with pg_manager.get_async_session_context() as db:
+        acquired = (
+            await db.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": REMINDER_SCAN_LOCK_KEY})
+        ).scalar()
+        if not acquired:
+            return {"skipped": True}
+
+        try:
+            synced = await reminder_service.sync_day_occurrences(db)
+            advanced = await reminder_service.advance_due_status(db)
+        finally:
+            await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": REMINDER_SCAN_LOCK_KEY})
+
+    if synced["created"] or advanced["delivered"] or advanced["missed"]:
+        logger.info(
+            "提醒扫描完成 day={} scanned={} created={} delivered={} missed={}",
+            synced["day"],
+            synced["scanned"],
+            synced["created"],
+            advanced["delivered"],
+            advanced["missed"],
+        )
+
+    return {**synced, **advanced}
+
+
 async def _worker_startup(ctx):
     del ctx
     pg_manager.initialize()
@@ -564,6 +608,10 @@ async def _worker_shutdown(ctx):
 
 class WorkerSettings:
     functions = [process_agent_run]
+    cron_jobs = [
+        # 每分钟扫描一次提醒；worker 启动时先跑一轮，避免重启后要等满一分钟
+        cron(scan_due_reminders, name="scan_due_reminders", timeout=120, run_at_startup=True),
+    ]
     max_tries = 2
     retry_jobs = True
     job_timeout = 3600

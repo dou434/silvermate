@@ -47,7 +47,7 @@ const router = useRouter()
 const infoStore = useInfoStore()
 
 const brandName = computed(() => {
-  return infoStore.branding?.name?.trim() || '银发守护'
+  return infoStore.branding?.name?.trim() || '银发智伴'
 })
 
 const goHome = () => router.push('/')

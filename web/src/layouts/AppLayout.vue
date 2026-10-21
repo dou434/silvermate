@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted, computed, provide, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, provide, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   BarChart3,
+  BellRing,
   ClipboardList,
   LibraryBig,
   Box,
@@ -10,7 +11,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   MessageCirclePlus,
-  Search
+  Search,
+  Users
 } from 'lucide-vue-next'
 
 import { useConfigStore } from '@/stores/config'
@@ -21,6 +23,7 @@ import { useDatabaseStore } from '@/stores/database'
 import { useInfoStore } from '@/stores/info'
 import { useTaskerStore } from '@/stores/tasker'
 import { useUserStore } from '@/stores/user'
+import { useFamilyStore } from '@/stores/family'
 import { storeToRefs } from 'pinia'
 import UserInfoComponent from '@/components/UserInfoComponent.vue'
 import DebugComponent from '@/components/DebugComponent.vue'
@@ -37,6 +40,7 @@ const databaseStore = useDatabaseStore()
 const infoStore = useInfoStore()
 const taskerStore = useTaskerStore()
 const userStore = useUserStore()
+const familyStore = useFamilyStore()
 const { activeCount: activeCountRef, isDrawerOpen } = storeToRefs(taskerStore)
 const { threads, currentThreadId, hasMoreThreads, isLoadingMoreThreads } =
   storeToRefs(chatThreadsStore)
@@ -78,14 +82,23 @@ const getRemoteDatabase = async () => {
   }
 }
 
-// Fetch GitHub stars count - 银发守护不展示 GitHub Stars
+// Fetch GitHub stars count - 银发智伴不展示 GitHub Stars
 const fetchGithubStars = async () => {
   return
 }
 
 onMounted(async () => {
+  // 窄屏（手机）默认收起侧边栏，把宽度让给内容区；老人端主要在手机上使用
+  narrowScreenQuery = window.matchMedia('(max-width: 768px)')
+  if (narrowScreenQuery.matches) {
+    setSidebarCollapsed(true)
+  }
+  narrowScreenQuery.addEventListener('change', handleNarrowScreenChange)
+
   // 加载信息配置与知识库数据无依赖，可并行
   await Promise.all([infoStore.loadInfoConfig(), getRemoteDatabase()])
+  // 绑定关系决定侧边栏显示「家人」还是「我的家人」，要在首屏就拿到，避免菜单闪一下再变
+  familyStore.refreshLinks()
   await initAgentNavigation()
   await getRemoteConfig()
   // 仅管理员加载任务中心数据
@@ -93,6 +106,11 @@ onMounted(async () => {
     taskerStore.loadTasks()
     fetchGithubStars() // Fetch GitHub stars on mount
   }
+})
+
+onUnmounted(() => {
+  narrowScreenQuery?.removeEventListener('change', handleNarrowScreenChange)
+  narrowScreenQuery = null
 })
 
 const route = useRoute()
@@ -103,43 +121,73 @@ const activeConversationThreadId = computed(() => {
   return route.path.startsWith('/agent') ? currentThreadId.value : null
 })
 const organizationName = computed(() => {
-  return infoStore.organization.name || infoStore.branding.name || '银发守护'
+  return infoStore.organization.name || infoStore.branding.name || '银发智伴'
 })
+
+// 角色推断：后端 users 表不区分老人/子女，只能靠绑定关系判断。
+// 详见 stores/family.js 里 isElderUser 的注释。
+const { isElderUser } = storeToRefs(familyStore)
 
 // 下面是导航菜单部分，添加智能体项
 const mainList = computed(() => {
   const items = [
     {
-      name: '创建新对话',
-      path: '/agent',
-      icon: MessageCirclePlus,
-      activeIcon: MessageCirclePlus,
+      name: '我的提醒',
+      path: '/elder',
+      icon: BellRing,
+      activeIcon: BellRing,
       action: true,
       exactActive: true
+    },
+    // 「家人」这一项是双侧同名的两个不同页面，必须按角色区分：
+    //   老人 → /elder/family  只能同意/拒绝子女发来的绑定申请
+    //   子女 → /family        绑定老人、安排提醒、查看完成情况
+    // 取消角色区分会让老人看到「绑定老人」这种自己不该有的操作。
+    isElderUser.value
+      ? {
+          name: '我的家人',
+          path: '/elder/family',
+          icon: Users,
+          activeIcon: Users
+        }
+      : {
+          name: '家人',
+          path: '/family',
+          icon: Users,
+          activeIcon: Users
+        },
+    {
+      name: '问 AI',
+      path: '/agent',
+      icon: MessageCirclePlus,
+      activeIcon: MessageCirclePlus
     }
   ]
 
-  items.push({
-    name: '工作区',
-    path: '/workspace',
-    icon: FolderKanban,
-    activeIcon: FolderKanban
-  })
+  // 平台管理能力只对管理员保留，普通用户界面不再暴露工作区、扩展与智能体管理
+  if (userStore.isAdmin) {
+    items.push({
+      name: '工作区',
+      path: '/workspace',
+      icon: FolderKanban,
+      activeIcon: FolderKanban
+    })
 
-  items.push({
-    name: '智能体扩展',
-    path: '/extensions',
-    activePaths: ['/extensions'],
-    icon: LibraryBig,
-    activeIcon: LibraryBig
-  })
+    items.push({
+      name: '智能体扩展',
+      path: '/extensions',
+      activePaths: ['/extensions'],
+      icon: LibraryBig,
+      activeIcon: LibraryBig
+    })
 
-  items.push({
-    name: '智能体管理',
-    path: '/model-manage',
-    icon: Box,
-    activeIcon: Box
-  })
+    items.push({
+      name: '智能体管理',
+      path: '/model-manage',
+      icon: Box,
+      activeIcon: Box
+    })
+  }
 
   if (userStore.isSuperAdmin) {
     items.push({
@@ -170,6 +218,13 @@ const setSidebarCollapsed = (collapsed) => {
 
 const toggleSidebar = () => {
   setSidebarCollapsed(!sidebarCollapsed.value)
+}
+
+// 窄屏媒体查询句柄，用于在屏幕变窄时自动收起侧边栏
+let narrowScreenQuery = null
+
+function handleNarrowScreenChange(event) {
+  if (event.matches) setSidebarCollapsed(true)
 }
 
 const openConversationSearch = () => {

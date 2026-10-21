@@ -8,10 +8,12 @@ from server.routers.auth_dept_router import department
 from server.routers.auth_router import auth
 from server.routers.chat_router import chat
 from server.routers.dashboard_router import dashboard
+from server.routers.family_router import family
 from server.routers.filesystem_router import filesystem_router
 from server.routers.mcp_router import mcp
 from server.routers.mention_router import mention_router
 from server.routers.model_provider_router import model_providers
+from server.routers.reminder_router import reminders
 from server.routers.skill_router import skills, user_skills
 from server.routers.system_router import system
 from server.routers.system_task_router import tasks
@@ -29,6 +31,8 @@ router.include_router(auth)  # /api/auth/* 登录、用户信息与 CLI 浏览�
 router.include_router(agent_router)  # /api/agent/* 智能体管理与运行态
 router.include_router(agent_invocation_router)  # /api/agent-invocation/* 外部 Agent 调用与评估
 router.include_router(chat)  # /api/chat/* 对话线程、消息历史与附件
+router.include_router(family)  # /api/family/* 家庭绑定与关怀留言
+router.include_router(reminders)  # /api/reminders/* 提醒与执行记录
 
 # 管理与工作台接口：后台任务、权限域以及工具体系配置。
 router.include_router(dashboard)  # /api/dashboard/* 仪表盘聚合数据

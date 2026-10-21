@@ -1,14 +1,15 @@
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-  <!-- 盾牌轮廓 -->
-  <path d="M64 4 L120 24 L120 64 C120 96 96 116 64 124 C32 116 8 96 8 64 L8 24 Z"
-        fill="#fa8c16" stroke="#b3500b" stroke-width="2"/>
-  <!-- 盾牌内部高光 -->
-  <path d="M64 8 L116 26 L116 64 C116 94 94 112 64 120 C34 112 12 94 12 64 L12 26 Z"
-        fill="#ffa940" opacity="0.3"/>
-  <!-- 心形 -->
-  <path d="M64 88 C64 88 44 72 44 56 C44 48 50 42 57 42 C61 42 64 45 64 48 C64 45 67 42 71 42 C78 42 84 48 84 56 C84 72 64 88 64 88 Z"
-        fill="#ffffff"/>
-  <!-- 心形内部双手托举 -->
-  <path d="M52 66 C50 62 50 58 52 55 M76 66 C78 62 78 58 76 55"
-        stroke="#fa8c16" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="银发智伴">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFC46B"/>
+      <stop offset="100%" stop-color="#E8712A"/>
+    </linearGradient>
+  </defs>
+  <!-- 圆角底：柔和无锐角，贴合适老化界面 -->
+  <rect x="2" y="2" width="124" height="124" rx="32" fill="url(#bgGrad)"/>
+  <!-- 对话气泡 + 左下尾巴：代表「陪伴与交流」 -->
+  <ellipse cx="64" cy="56" rx="40" ry="33" fill="#FFFFFF" opacity="0.97"/>
+  <path d="M40 81 L29 106 L61 86 Z" fill="#FFFFFF" opacity="0.97"/>
+  <!-- 心形：代表「关护」 -->
+  <path d="M64 74.5c-1.1-.9-15-9.3-15-18.6 0-5.4 4.2-9.2 9-9.2 2.8 0 5 1.4 6 3.7 1-2.3 3.2-3.7 6-3.7 4.8 0 9 3.8 9 9.2 0 9.3-13.9 17.7-15 18.6z" fill="#E8712A"/>
 </svg>

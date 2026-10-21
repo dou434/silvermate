@@ -19,7 +19,12 @@ from server.utils.auth_middleware import (
     get_required_user,
 )
 from yuxi.utils.auth_utils import AuthUtils
-from yuxi.services.user_identity_service import generate_unique_uid, validate_username, is_valid_phone_number
+from yuxi.services.user_identity_service import (
+    generate_unique_uid,
+    is_valid_phone_number,
+    normalize_phone_number,
+    validate_username,
+)
 from yuxi.services.operation_log_service import log_operation
 from yuxi.services.auth_service import (
     CLI_AUTH_POLL_INTERVAL_SECONDS,
@@ -57,6 +62,19 @@ class Token(BaseModel):
     role: str
     department_id: int | None = None
     department_name: str | None = None
+
+
+class RegisterRequest(BaseModel):
+    """自助注册请求。
+
+    只接受 uid / 密码 / 可选显示名与手机号；角色固定为普通用户，
+    不接受客户端传入 role 或 department_id，避免提权。
+    """
+
+    uid: str = Field(min_length=3, max_length=20, description="登录标识，字母数字下划线")
+    password: str = Field(min_length=6, max_length=64, description="登录密码，至少 6 位")
+    username: str | None = Field(default=None, max_length=20, description="显示名称，缺省时与 uid 相同")
+    phone_number: str | None = Field(default=None, description="可选手机号，用于登录与找回")
 
 
 class UserCreate(BaseModel):
@@ -288,6 +306,70 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         "role": user.role,
         "department_id": user.department_id,
         "department_name": department_name,
+    }
+
+
+# =============================================================================
+# === 自助注册分组 ===
+# =============================================================================
+
+
+@auth.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
+async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    """自助注册普通用户账号，注册成功后直接返回登录令牌。
+
+    边界说明：
+    - 角色固定为 ``user``，request body 不接受角色字段，避免越权提升；
+    - 新用户不绑定部门（``department_id=None``），业务隔离不再依赖部门；
+    - uid 与手机号的唯一性由数据库唯一索引兜底，这里先查一次以返回可读错误。
+    """
+    if not re.match(r"^[a-zA-Z0-9_]{3,20}$", data.uid):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="UID 只能包含字母、数字和下划线，长度 3-20 位",
+        )
+
+    display_name = (data.username or data.uid).strip()
+    is_valid, error_msg = validate_username(display_name)
+    if not is_valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+
+    phone_number = normalize_phone_number(data.phone_number or "") or None
+    if phone_number and not is_valid_phone_number(phone_number):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="手机号格式不正确")
+
+    user_repo = UserRepository()
+    if await user_repo.get_by_uid(data.uid):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该 UID 已被注册")
+    if phone_number and await user_repo.exists_by_phone(phone_number):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该手机号已被注册")
+
+    user = await user_repo.create(
+        {
+            "uid": data.uid,
+            "username": display_name,
+            "phone_number": phone_number,
+            "password_hash": AuthUtils.hash_password(data.password),
+            "role": "user",
+            "department_id": None,
+            "last_login": utc_now_naive(),
+        }
+    )
+
+    access_token = AuthUtils.create_access_token({"sub": str(user.id)})
+    await log_operation(db, user.id, "自助注册", f"注册用户: {user.uid}")
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "username": user.username,
+        "uid": user.uid,
+        "phone_number": user.phone_number,
+        "avatar": user.avatar,
+        "role": user.role,
+        "department_id": user.department_id,
+        "department_name": None,
     }
 
 

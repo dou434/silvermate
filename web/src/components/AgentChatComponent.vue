@@ -143,7 +143,7 @@
                 <h1>{{ randomGreeting }}</h1>
               </div>
 
-              <!-- 银发守护：快捷问题面板 - 只在无对话时显示 -->
+              <!-- 银发智伴：快捷问题面板 - 只在无对话时显示 -->
               <div v-if="!conversations.length" class="quick-questions-panel">
                 <button
                   v-for="q in quickQuestions"
@@ -169,7 +169,7 @@
                 @remove-attachment="handleAttachmentRemove"
               >
                 <template #actions-left-extra>
-                  <!-- 银发守护：语音输入按钮 -->
+                  <!-- 银发智伴：语音输入按钮 -->
                   <button
                     v-if="voiceInput.isSupported.value"
                     class="voice-input-btn"
@@ -584,7 +584,7 @@
 
     <ElderlyEmergencyButton />
 
-    <!-- 银发守护：适老化设置入口 -->
+    <!-- 银发智伴：适老化设置入口 -->
     <button
       class="elderly-settings-btn"
       title="适老化设置"
@@ -676,7 +676,7 @@ const { threads, currentThreadId, currentThread } = storeToRefs(chatThreadsStore
 // ==================== LOCAL CHAT & UI STATE ====================
 const userInput = ref('')
 
-// === 银发守护：语音输入 ===
+// === 银发智伴：语音输入 ===
 const voiceInput = useVoiceInput((text) => {
   // 语音识别结果追加到输入框
   userInput.value = (userInput.value + text).trim()
@@ -685,7 +685,7 @@ function toggleVoice() {
   voiceInput.toggleRecording()
 }
 
-// === 银发守护：快捷问题 ===
+// === 银发智伴：快捷问题 ===
 const quickQuestions = [
   '高血压患者饮食要注意什么？',
   '高龄津贴怎么申请？',
@@ -698,7 +698,7 @@ function askQuickQuestion(q) {
   handleSendOrStop({})
 }
 
-// === 银发守护：适老化设置弹窗 ===
+// === 银发智伴：适老化设置弹窗 ===
 const showElderlySettings = ref(false)
 
 const sendCooldownActive = ref(false)
@@ -2515,7 +2515,7 @@ const handleSendMessage = async ({ image } = {}) => {
   // 发送后进入短暂冷却，防止连续触发停止
   startSendCooldown()
 
-  // === 银发守护：紧急关键词检测 ===
+  // === 银发智伴：紧急关键词检测 ===
   const emergency = detectEmergency(text)
   if (emergency) {
     Modal.warning({

@@ -106,16 +106,16 @@ async def get_current_user(
 
 # 获取已登录用户（抛出401如果未登录）
 async def get_required_user(user: User | None = Depends(get_current_user)):
+    """只校验登录状态。
+
+    自助注册的用户不再绑定部门，部门也不再作为业务隔离维度，
+    因此这里不再要求 department_id 非空（历史实现会返回 400）。
+    """
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="请登录后再访问",
             headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not user.department_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="当前用户未绑定部门",
         )
     return user
 

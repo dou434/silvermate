@@ -48,24 +48,6 @@
           </div>
           <div
             class="sider-item"
-            :class="{ activesec: activeTab === 'user' }"
-            @click="activeTab = 'user'"
-            v-if="userStore.isAdmin"
-          >
-            <User class="icon" :size="18" />
-            <span>用户管理</span>
-          </div>
-          <div
-            class="sider-item"
-            :class="{ activesec: activeTab === 'department' }"
-            @click="activeTab = 'department'"
-            v-if="userStore.isSuperAdmin"
-          >
-            <Users class="icon" :size="18" />
-            <span>部门管理</span>
-          </div>
-          <div
-            class="sider-item"
             :class="{ activesec: activeTab === 'agentEnv' }"
             @click="activeTab = 'agentEnv'"
             v-if="userStore.isLoggedIn"
@@ -110,22 +92,6 @@
         >
           基本设置
         </div>
-        <div
-          class="nav-item"
-          :class="{ active: activeTab === 'user' }"
-          @click="activeTab = 'user'"
-          v-if="userStore.isAdmin"
-        >
-          用户管理
-        </div>
-        <div
-          class="nav-item"
-          :class="{ active: activeTab === 'department' }"
-          @click="activeTab = 'department'"
-          v-if="userStore.isSuperAdmin"
-        >
-          部门管理
-        </div>
       </div>
 
       <!-- 内容区域 -->
@@ -146,14 +112,6 @@
           <div v-show="activeTab === 'base'" v-if="userStore.isAdmin">
             <BasicSettingsSection />
           </div>
-
-          <div v-show="activeTab === 'user'" v-if="userStore.isAdmin">
-            <UserManagementComponent />
-          </div>
-
-          <div v-show="activeTab === 'department'" v-if="userStore.isSuperAdmin">
-            <DepartmentManagementComponent />
-          </div>
         </div>
       </div>
     </div>
@@ -168,16 +126,12 @@ import {
   Settings,
   SlidersHorizontal,
   SquareTerminal,
-  User,
-  Users,
   X
 } from 'lucide-vue-next'
 import AccountSettingsComponent from '@/components/AccountSettingsComponent.vue'
 import AgentEnvSettingsCard from '@/components/AgentEnvSettingsCard.vue'
 import BasicSettingsSection from '@/components/BasicSettingsSection.vue'
 import UserConfigSettingsCard from '@/components/UserConfigSettingsCard.vue'
-import UserManagementComponent from '@/components/UserManagementComponent.vue'
-import DepartmentManagementComponent from '@/components/DepartmentManagementComponent.vue'
 
 const props = defineProps({
   visible: {
@@ -203,8 +157,8 @@ const visible = computed({
 const availableTabs = computed(() => {
   const tabs = []
   if (userStore.isLoggedIn) tabs.push('account', 'userConfig', 'agentEnv')
-  if (userStore.isAdmin) tabs.push('base', 'user')
-  if (userStore.isSuperAdmin) tabs.push('department')
+  // 用户管理与部门管理已随自助注册下线；"基本设置"作为运维通道仅对管理员保留
+  if (userStore.isAdmin) tabs.push('base')
   return tabs
 })
 

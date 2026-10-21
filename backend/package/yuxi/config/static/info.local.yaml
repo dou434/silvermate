@@ -1,26 +1,26 @@
-# 银发守护 - 品牌信息配置文件
+# 银发智伴 - 品牌信息配置文件
 # 基于 info.template.yaml 改造
 
 # 组织信息
 organization:
-  name: "银发守护"                    # 完整组织名称
+  name: "银发智伴"                    # 完整组织名称
   logo: "/favicon.svg"               # Logo文件路径（放在 web/public 目录下）
   avatar: "/avatar.jpg"              # 头像文件路径（放在 web/public 目录下）
   login_bg: "/login-bg.jpg"          # 登录背景图片路径（放在 web/public 目录下）
 
 # 项目信息
 branding:
-  name: "银发守护"
-  title: "银发守护 —— 智慧养老 AI 助手"           # 系统标题
-  subtitle: "用 AI 守护每一位长者的晚年生活"        # 副标题
+  name: "银发智伴"
+  title: "银发智伴 —— 智慧养老 AI 助手"           # 系统标题
+  subtitle: "用 AI 陪伴每一位长者的晚年生活"        # 副标题
   subtitles:
-    - "用 AI 守护每一位长者的晚年生活"
+    - "用 AI 陪伴每一位长者的晚年生活"
     - "健康咨询 · 政策解读 · 生活陪伴 · 护理知识"
     - "让养老更智能，让关怀更及时"
-    - "知识驱动关怀，智能守护银发"
+    - "知识驱动关怀，智能陪伴银发"
 
 # 页脚信息
 footer:
-  copyright: "© 银发守护 2026 v{{YUXI_VERSION}}"
+  copyright: "© 银发智伴 2026 v{{YUXI_VERSION}}"
   user_agreement_url: "/protocols/user-agreement.template.html"
   privacy_policy_url: "/protocols/privacy-policy.template.html"

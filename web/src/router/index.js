@@ -28,6 +28,12 @@ const router = createRouter({
       meta: { requiresAuth: false }
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('../views/RegisterView.vue'),
+      meta: { requiresAuth: false }
+    },
+    {
       path: '/help',
       name: 'help',
       component: () => import('../views/HelpView.vue'),
@@ -44,6 +50,40 @@ const router = createRouter({
       name: 'CLIAuthAuthorize',
       component: () => import('@/views/CLIAuthAuthorizeView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/elder',
+      name: 'ElderHome',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'ElderHomeComp',
+          component: () => import('../views/ElderHomeView.vue'),
+          meta: { keepAlive: true, requiresAuth: true }
+        },
+        {
+          // 老人视角的「我的家人」：只看别人对我发起的绑定，可同意/拒绝
+          // 与 /family（子女端的照护管理）是两个不同角色的页面，不能混用
+          path: 'family',
+          name: 'ElderFamilyComp',
+          component: () => import('../views/ElderFamilyView.vue'),
+          meta: { keepAlive: true, requiresAuth: true }
+        }
+      ]
+    },
+    {
+      path: '/family',
+      name: 'FamilyHome',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'FamilyHomeComp',
+          component: () => import('../views/FamilyHomeView.vue'),
+          meta: { keepAlive: true, requiresAuth: true }
+        }
+      ]
     },
     {
       path: '/agent',
@@ -236,6 +276,11 @@ router.beforeEach(async (to) => {
 
   // 如果用户已登录但访问登录页，按 redirect 参数跳转
   if (to.path === '/login' && isLoggedIn) {
+    return sanitizeRedirect(to.query.redirect)
+  }
+
+  // 已登录用户不需要再看注册页
+  if (to.path === '/register' && isLoggedIn) {
     return sanitizeRedirect(to.query.redirect)
   }
 

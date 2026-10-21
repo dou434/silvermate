@@ -22,7 +22,8 @@
           <h1 class="brand-text">
             <span v-if="brandOrgName" class="brand-org">{{ brandOrgName }}</span>
             <span v-if="brandOrgName && brandName !== brandOrgName" class="brand-separator"></span>
-            <span class="brand-main">{{ brandName }}</span>
+            <!-- 组织名与品牌名相同时不再重复渲染 -->
+            <span v-if="brandName && brandName !== brandOrgName" class="brand-main">{{ brandName }}</span>
           </h1>
         </div>
       </div>
@@ -214,6 +215,13 @@
                       <span v-else>登录</span>
                     </a-button>
                   </a-form-item>
+
+                  <a-form-item v-if="!isFirstRun" class="register-entry">
+                    <div class="register-row">
+                      <span>还没有账号？</span>
+                      <router-link to="/register" class="register-link">立即注册</router-link>
+                    </div>
+                  </a-form-item>
                 </a-form>
               </div>
 
@@ -272,7 +280,7 @@ const brandOrgName = computed(() => {
 })
 const brandName = computed(() => {
   const orgName = brandOrgName.value
-  const brandNameRaw = infoStore.branding?.name?.trim() || '银发守护'
+  const brandNameRaw = infoStore.branding?.name?.trim() || '银发智伴'
 
   if (orgName && brandNameRaw && orgName !== brandNameRaw) {
     return brandNameRaw
@@ -415,13 +423,13 @@ const handleLogin = async () => {
 
     // 根据用户角色决定重定向目标
     if (redirectPath === '/') {
-      // 统一跳转到聊天页面（管理员与普通用户共享同一聊天界面）
+      // 默认进入老人端提醒页：这是本产品的主入口，管理员也能从这里进入管理功能
       try {
         await agentStore.initialize()
-        router.push('/agent')
+        router.push('/elder')
       } catch (error) {
         console.error('获取智能体信息失败:', error)
-        router.push('/agent')
+        router.push('/elder')
       }
     } else {
       // 跳转到其他预设的路径
@@ -754,6 +762,32 @@ onUnmounted(() => {
 
 .agreement-link {
   color: var(--main-color);
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.register-entry {
+  margin-bottom: 0;
+
+  :deep(.ant-form-item-explain) {
+    display: none;
+  }
+}
+
+.register-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--gray-600);
+}
+
+.register-link {
+  color: var(--main-color);
+  font-weight: 500;
 
   &:hover {
     text-decoration: underline;

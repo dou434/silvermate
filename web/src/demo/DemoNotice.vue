@@ -43,7 +43,7 @@ function handleConfirm() {
       </div>
       <h2 class="demo-notice-title">⚠️ 静态演示版本</h2>
       <div class="demo-notice-body">
-        <p>您好！欢迎体验<strong>银发守护 Silver Guardian</strong>。</p>
+        <p>您好！欢迎体验<strong>银发智伴 SilverMate</strong>。</p>
         <p>
           当前页面为<strong class="demo-notice-strong">静态演示版本</strong>，由 GitHub Pages 部署，
           旨在展示产品界面与交互设计，<strong>不涉及任何真实 AI 调用或后端服务</strong>。

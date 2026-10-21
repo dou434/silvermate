@@ -69,6 +69,53 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /**
+   * 自助注册普通用户账号，成功后直接写入登录态。
+   * @param {{uid: string, password: string, username?: string, phone_number?: string}} payload
+   * @returns {Promise<boolean>}
+   */
+  async function register(payload) {
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        // 422 时 detail 是字段校验数组，取第一条可读文案
+        const detail = error.detail
+        let errorMessage = '注册失败，请稍后重试'
+        if (Array.isArray(detail) && detail.length > 0) {
+          errorMessage = detail[0].msg || errorMessage
+        } else if (typeof detail === 'string') {
+          errorMessage = detail
+        }
+        throw new Error(errorMessage)
+      }
+
+      const data = await response.json()
+
+      token.value = data.access_token
+      userId.value = data.user_id
+      username.value = data.username
+      uid.value = data.uid
+      phoneNumber.value = data.phone_number || ''
+      avatar.value = data.avatar || ''
+      userRole.value = data.role
+      departmentId.value = data.department_id || null
+      departmentName.value = data.department_name || ''
+
+      localStorage.setItem('user_token', data.access_token)
+
+      return true
+    } catch (error) {
+      console.error('注册错误:', error)
+      throw error
+    }
+  }
+
   function logout() {
     // 清除状态
     token.value = ''
@@ -390,6 +437,7 @@ export const useUserStore = defineStore('user', () => {
 
     // 方法
     login,
+    register,
     logout,
     initialize,
     checkFirstRun,

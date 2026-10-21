@@ -1,0 +1,27 @@
+# 本地开发覆盖配置
+#
+# 解决的问题：
+#   1. 宿主机 6379 端口被本机 redis-server.exe 占用 → redis 改映射到 6380
+#   2. MinIO 官方镜像 2025 年起已从 Docker Hub 下架（dl.min.io 二进制也返回 410），
+#      改用 Bitnami 遗产镜像，它的启动约定与官方镜像不同，需单独适配
+#
+# 注意：ports / volumes / command 使用 !override、!reset 标签替换基础配置，
+#       Compose 默认对列表是追加合并，不替换会导致端口和挂载重复。
+
+services:
+  redis:
+    ports: !override
+      - "6380:6379"
+
+  minio:
+    image: bitnamilegacy/minio:latest
+    # 清空基础配置里的 `minio server /minio_data ...`，
+    # Bitnami 镜像由 entrypoint 自行启动服务，不接受官方镜像的启动参数
+    command: !reset []
+    environment:
+      # Bitnami 使用 ROOT_USER/ROOT_PASSWORD，不认官方的 ACCESS_KEY/SECRET_KEY
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes: !override
+      # Bitnami 的默认数据目录是 /bitnami/minio/data，不是 /minio_data
+      - ./docker/volumes/milvus/minio:/bitnami/minio/data
