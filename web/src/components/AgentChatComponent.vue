@@ -217,9 +217,6 @@
                 @added="handleTmpAttachmentsAdded"
               />
 
-              <div class="bottom-actions" v-if="conversations.length > 0">
-                <p class="note">当前智能体：{{ currentThreadAgentName }}；请注意辨别内容的可靠性</p>
-              </div>
             </div>
           </div>
         </div>
@@ -1088,16 +1085,6 @@ const handleModelSelect = (spec) => {
   }
 }
 
-const currentThreadAgentName = computed(() => {
-  const threadAgentId = currentThread.value?.agent_id
-  if (threadAgentId && agents.value?.length) {
-    const threadAgent = agents.value.find((agent) => agent.id === threadAgentId)
-    if (threadAgent?.name) {
-      return threadAgent.name
-    }
-  }
-  return currentAgentName.value
-})
 // 检查当前智能体是否支持文件上传
 const supportsFileUpload = computed(() => {
   if (!currentAgent.value) return false
@@ -3512,21 +3499,6 @@ watch(currentChatId, (threadId, oldThreadId) => {
     width: 100%;
     max-width: 800px;
     margin: 0 auto;
-
-    .bottom-actions {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      width: 100%;
-      background: var(--gray-0);
-    }
-
-    .note {
-      font-size: small;
-      color: var(--gray-300);
-      margin: 4px 0;
-      user-select: none;
-    }
   }
 
   .input-model-selector {
