@@ -247,9 +247,49 @@ async function handleFinish(item, done) {
   }
 }
 
-/** 老人是否开启了自动朗读（适老化设置里配置，默认关） */
-function shouldReadAloud() {
-  return localStorage.getItem('elderly_auto_read') === 'true'
+const CN_DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九']
+
+/** 0-59 的阿拉伯数字转中文读法，TTS 念"17"会读成一七，必须自己转。 */
+function cnNumber(value) {
+  if (value < 10) return CN_DIGITS[value]
+  if (value < 20) return `十${value % 10 === 0 ? '' : CN_DIGITS[value % 10]}`
+  const ones = value % 10
+  return `${CN_DIGITS[Math.floor(value / 10)]}十${ones === 0 ? '' : CN_DIGITS[ones]}`
+}
+
+/**
+ * 把触发时刻转成老人听得懂的口语时间。
+ * 直接念 "17:39" 会被读成"一七三九"，所以换成"下午五点三十九分"。
+ */
+function spokenTime(iso) {
+  const time = dayjs(iso)
+  const hour = time.hour()
+  const minute = time.minute()
+
+  if (hour === 0 && minute === 0) return '零点整'
+
+  let period = '晚上'
+  if (hour < 5) period = '凌晨'
+  else if (hour < 8) period = '早上'
+  else if (hour < 12) period = '上午'
+  else if (hour === 12) period = '中午'
+  else if (hour < 18) period = '下午'
+  else if (hour < 20) period = '傍晚'
+
+  const hourText = `${period}${cnNumber(hour % 12 === 0 ? 12 : hour % 12)}点`
+  return minute === 0 ? `${hourText}整` : `${hourText}${cnNumber(minute)}分`
+}
+
+/** 组装播报内容：时间 + 标题 + 内容。剂量和注意事项往往只在内容里，不能漏。 */
+function buildAlertSpeech(item) {
+  const parts = [`${spokenTime(item.scheduled_at)}，提醒您${item.title}`]
+  if (item.content) parts.push(item.content)
+  return `${parts.join('。')}。`
+}
+
+/** 是否播报提醒语音（适老化设置里单独配置，默认开） */
+function shouldSpeakReminder() {
+  return localStorage.getItem('elderly_reminder_voice') !== 'false'
 }
 
 /** 是否开启提醒铃声（适老化设置里配置，默认开） */
@@ -273,8 +313,8 @@ function showNextDueAlert() {
   const chimePlayed = shouldPlayChime()
   if (chimePlayed) playAlertChime()
 
-  if (shouldReadAloud()) {
-    const speak = () => tts.speak(`提醒时间到了。${next.title}`, `reminder-${next.id}`)
+  if (shouldSpeakReminder()) {
+    const speak = () => tts.speak(buildAlertSpeech(next), `reminder-${next.id}`)
     if (chimePlayed) {
       speakTimer = setTimeout(speak, SPEAK_DELAY_MS)
     } else {
