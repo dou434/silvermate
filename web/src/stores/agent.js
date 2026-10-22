@@ -24,9 +24,11 @@ function sortAgents(agents) {
   })
 }
 
-function getPreferredAgentId(agents, persistedId) {
+function getPreferredAgentId(agents) {
   const chatAgents = agents.filter((agent) => !agent.is_subagent)
-  if (persistedId && chatAgents.some((agent) => agent.id === persistedId)) return persistedId
+  // 产品只保留一个对话智能体（内置的「智能助手」），界面上不再提供切换。
+  // 这里刻意忽略 localStorage 里残留的历史选择：老用户曾经选过别的智能体，
+  // 不覆盖的话会继续落在那个已经不可见的智能体上，行为与界面不一致。
   return chatAgents.find(isBuiltinAgent)?.id || chatAgents[0]?.id || null
 }
 
@@ -103,7 +105,7 @@ export const useAgentStore = defineStore(
       try {
         await Promise.all([fetchAgents(), fetchMentionResources()])
 
-        const targetAgentId = getPreferredAgentId(agents.value, selectedAgentId.value)
+        const targetAgentId = getPreferredAgentId(agents.value)
         if (targetAgentId) {
           await selectAgent(targetAgentId)
         }
