@@ -222,6 +222,7 @@ import { UserPlus } from 'lucide-vue-next'
 
 import { familyApi } from '@/apis/family_api'
 import { reminderApi } from '@/apis/reminder_api'
+import { FAMILY_UPDATED_EVENT, REMINDERS_UPDATED_EVENT } from '@/composables/useAssistantCommand'
 import { useFamilyStore } from '@/stores/family'
 import { useUserStore } from '@/stores/user'
 import ReminderEditorModal from '@/components/family/ReminderEditorModal.vue'
@@ -543,11 +544,23 @@ onMounted(async () => {
   await loadStats()
   startStatusPolling()
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener(REMINDERS_UPDATED_EVENT, handleAssistantDataChanged)
+  window.addEventListener(FAMILY_UPDATED_EVENT, handleAssistantDataChanged)
 })
+
+// 「问 AI」里替老人标记完成提醒或给家人发留言后，本页可能还在缓存里，靠事件刷新
+function handleAssistantDataChanged() {
+  loadToday({ silent: true })
+  loadStats({ silent: true })
+  if (activeTab.value === 'manage') loadReminders()
+  loadMessages()
+}
 
 onUnmounted(() => {
   stopStatusPolling()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener(REMINDERS_UPDATED_EVENT, handleAssistantDataChanged)
+  window.removeEventListener(FAMILY_UPDATED_EVENT, handleAssistantDataChanged)
 })
 </script>
 

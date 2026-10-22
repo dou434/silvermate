@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from server.routers.agent_invocation_router import agent_invocation_router
 from server.routers.agent_router import agent_router
+from server.routers.assistant_router import assistant
 from server.routers.auth_dept_router import department
 from server.routers.auth_router import auth
 from server.routers.chat_router import chat
@@ -33,6 +34,7 @@ router.include_router(agent_invocation_router)  # /api/agent-invocation/* 外部
 router.include_router(chat)  # /api/chat/* 对话线程、消息历史与附件
 router.include_router(family)  # /api/family/* 家庭绑定与关怀留言
 router.include_router(reminders)  # /api/reminders/* 提醒与执行记录
+router.include_router(assistant)  # /api/assistant/* 问 AI 界面的自然语言界面指令
 
 # 管理与工作台接口：后台任务、权限域以及工具体系配置。
 router.include_router(dashboard)  # /api/dashboard/* 仪表盘聚合数据

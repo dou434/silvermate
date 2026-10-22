@@ -110,7 +110,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -120,6 +120,7 @@ import { Users } from 'lucide-vue-next'
 import { reminderApi } from '@/apis/reminder_api'
 import ReminderAlertModal from '@/components/elder/ReminderAlertModal.vue'
 import { playAlertChime, useAlertChime } from '@/composables/useAlertChime'
+import { FAMILY_UPDATED_EVENT, REMINDERS_UPDATED_EVENT } from '@/composables/useAssistantCommand'
 import { useTTS } from '@/composables/useTTS'
 import { useFamilyStore } from '@/stores/family'
 import { useUserStore } from '@/stores/user'
@@ -380,17 +381,37 @@ function goFamily() {
   router.push('/elder/family')
 }
 
+// 「问 AI」里让 AI 标记完成提醒、给家人发留言后，会广播这两个事件；
+// 本页可能还在 keep-alive 缓存里，收不到路由钩子，只能靠事件把数据刷新过来。
+function handleRemindersUpdated() {
+  refreshToday()
+}
+
+function handleFamilyUpdated() {
+  familyStore.refreshUnread()
+}
+
 onMounted(() => {
   refreshToday()
   familyStore.refreshUnread()
   startPolling()
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener(REMINDERS_UPDATED_EVENT, handleRemindersUpdated)
+  window.addEventListener(FAMILY_UPDATED_EVENT, handleFamilyUpdated)
+})
+
+// keep-alive 页面切回来时补一次，避免看到离开时那一眼的旧状态
+onActivated(() => {
+  refreshToday()
+  familyStore.refreshUnread()
 })
 
 onUnmounted(() => {
   stopPolling()
   clearSpeakTimer()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener(REMINDERS_UPDATED_EVENT, handleRemindersUpdated)
+  window.removeEventListener(FAMILY_UPDATED_EVENT, handleFamilyUpdated)
   tts.stop()
 })
 </script>

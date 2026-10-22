@@ -145,6 +145,18 @@
 
               <!-- 银发智伴：快捷问题面板 - 只在无对话时显示 -->
               <div v-if="!conversations.length" class="quick-questions-panel">
+                <!-- 让老人知道「不只可以问，还能让它直接做」 -->
+                <p class="command-example-hint">也可以直接让我替您做事：</p>
+                <div class="command-example-row">
+                  <button
+                    v-for="example in commandExamples"
+                    :key="example"
+                    class="command-example-btn"
+                    @click="askQuickQuestion(example)"
+                  >
+                    {{ example }}
+                  </button>
+                </div>
                 <button
                   v-for="q in quickQuestions"
                   :key="q"
@@ -633,6 +645,7 @@ import { useAgentStore } from '@/stores/agent'
 import { useChatThreadsStore } from '@/stores/chatThreads'
 import { useChatUIStore } from '@/stores/chatUI'
 import { useConfigStore } from '@/stores/config'
+import { useFamilyStore } from '@/stores/family'
 import { storeToRefs } from 'pinia'
 import { MessageProcessor } from '@/utils/messageProcessor'
 import { agentApi, threadApi } from '@/apis'
@@ -644,6 +657,8 @@ import { useAgentStreamHandler } from '@/composables/useAgentStreamHandler'
 import { useStreamSmoother } from '@/composables/useStreamSmoother'
 import { useAgentMentionConfig } from '@/composables/useAgentMentionConfig'
 import { useVoiceInput } from '@/composables/useVoiceInput'
+import { useAssistantCommand } from '@/composables/useAssistantCommand'
+import { useTTS } from '@/composables/useTTS'
 import AgentArtifactsCard from '@/components/AgentArtifactsCard.vue'
 import AgentPanel from '@/components/AgentPanel.vue'
 import AttachmentTmpUploadModal from '@/components/AttachmentTmpUploadModal.vue'
@@ -663,6 +678,11 @@ const props = defineProps({
   sendDisabled: { type: Boolean, default: false }
 })
 const emit = defineEmits(['thread-change'])
+
+// === 银发智伴：让「问 AI」不只会说，还能替老人做事 ===
+// 命中指令时由后端直接执行（发留言 / 标记提醒 / 跳页面），没命中才走智能体对话
+const assistantCommand = useAssistantCommand()
+const tts = useTTS()
 
 // ==================== STORE MANAGEMENT ====================
 const agentStore = useAgentStore()
@@ -697,6 +717,27 @@ function askQuickQuestion(q) {
   userInput.value = q
   handleSendOrStop({})
 }
+
+// === 银发智伴：让 AI 直接做事的示例 ===
+// 示例要带真实称呼，写死"给小李发消息"对别的家庭是无效指令。
+const familyStore = useFamilyStore()
+const commandExamples = computed(() => {
+  // 最早建立的那条绑定更像"日常联系的人"，用来做示例最自然
+  const pick = (list) =>
+    [...(list || [])]
+      .filter((item) => item.status === 'active')
+      .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')))[0]
+
+  const child = pick(familyStore.links.as_elder)
+  const elder = pick(familyStore.links.as_child)
+  const name = child?.child_name || elder?.elder_name
+
+  const examples = []
+  if (name) examples.push(`给${name}发消息：我今天挺好的`)
+  examples.push('提醒都做完了')
+  examples.push('打开我的提醒')
+  return examples
+})
 
 // === 银发智伴：适老化设置弹窗 ===
 const showElderlySettings = ref(false)
@@ -1901,6 +1942,31 @@ const insertOptimisticHumanMessage = (
   ]
 }
 
+/**
+ * 把「指令 + 执行结果」直接放进当前对话。
+ *
+ * 这类交互不经过智能体运行，没有 run、也没有落库的消息记录，所以只能写进前端的
+ * onGoingConv：切到别的会话再切回来会消失，但刷新页面本就是重新开始一个话题，可接受。
+ */
+const appendLocalCommandExchange = (threadId, text, result) => {
+  const threadState = getThreadState(threadId)
+  if (!threadState) return
+
+  const requestId = createClientRequestId()
+  const answerId = `${requestId}-answer`
+
+  threadState.onGoingConv.msgChunks[requestId] = [
+    buildOptimisticHumanMessage({ requestId, text })
+  ]
+  threadState.onGoingConv.msgChunks[answerId] = [
+    { id: answerId, type: 'AIMessageChunk', content: result.reply || '' }
+  ]
+  threadState.replyLoadingVisible = false
+  threadState.isStreaming = false
+
+  nextTick(() => scrollController.scrollToBottom(true))
+}
+
 const markAttachmentsRequestId = (threadId, attachments, requestId) => {
   if (!threadId || !attachments.length) return null
   const previousAttachments = threadAttachmentsMap.value[threadId] || []
@@ -2545,6 +2611,20 @@ const handleSendMessage = async ({ image } = {}) => {
   }
   // 仅当用户显式选择过模型才下发覆盖；否则传 null，由后端使用智能体配置的模型
   const modelSpec = selectedModelByThread[threadId] || null
+
+  // === 银发智伴：先看这句话是不是「让界面做事」的指令 ===
+  // 命中就直接执行并给出结果，不再走智能体对话；没命中才继续往下走原有的问答链路。
+  const commandResult = await assistantCommand.tryRun(text)
+  if (commandResult) {
+    userInput.value = ''
+    appendLocalCommandExchange(threadId, text, commandResult)
+    assistantCommand.applyActions(commandResult.actions)
+    // 指令回复不走流式，AgentMessageComponent 的自动朗读不会触发，这里补一次
+    if (localStorage.getItem('elderly_auto_read') === 'true' && commandResult.reply) {
+      tts.speak(commandResult.reply, `command-${Date.now()}`)
+    }
+    return
+  }
 
   userInput.value = ''
 
