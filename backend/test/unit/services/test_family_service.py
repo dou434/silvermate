@@ -120,3 +120,27 @@ async def test_message_length_is_limited(ctx):
         await family_service.send_message(db, child, to_uid="elder_1", content="x" * 501)
 
     assert exc_info.value.status_code == 400
+
+
+async def test_links_carry_per_child_unread_count(ctx):
+    """老人有多个家人时，要能看出未读来自谁，否则默认打开错的人等于收不到。"""
+    db, elder, child, stranger = ctx
+
+    for uid, relation in (("child_1", "子女"), ("stranger_1", "侄子")):
+        link = await family_service.create_link(db, await family_service._load_user(db, uid), elder_uid="elder_1", relation=relation)
+        await family_service.approve_link(db, elder, link["id"])
+
+    await family_service.send_message(db, child, to_uid="elder_1", content="妈，我周末回来")
+    await family_service.send_message(db, child, to_uid="elder_1", content="路上买点水果")
+
+    links = await family_service.list_links(db, elder)
+    unread = {item["child_uid"]: item["unread_count"] for item in links["as_elder"]}
+
+    assert unread["child_1"] == 2
+    assert unread["stranger_1"] == 0
+
+    # 读掉其中一位的留言，只清这一位的计数
+    await family_service.list_messages(db, elder, with_uid="child_1")
+    links = await family_service.list_links(db, elder)
+    unread = {item["child_uid"]: item["unread_count"] for item in links["as_elder"]}
+    assert unread["child_1"] == 0

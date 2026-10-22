@@ -144,9 +144,17 @@
         </a-tab-pane>
 
         <!-- 留言 -->
-        <a-tab-pane key="message" tab="留言">
+        <a-tab-pane key="message">
+          <template #tab>
+            <span class="tab-with-unread">
+              留言
+              <span v-if="familyStore.unreadMessages" class="tab-unread">
+                {{ familyStore.unreadMessages }}
+              </span>
+            </span>
+          </template>
           <a-spin :spinning="loadingMessages">
-            <div class="message-list">
+            <div ref="messageListRef" class="message-list">
               <a-empty v-if="messages.length === 0" description="还没有留言，先说句话吧" />
               <div
                 v-for="msg in messages"
@@ -213,7 +221,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import dayjs from 'dayjs'
@@ -272,6 +280,7 @@ const messages = ref([])
 const loadingMessages = ref(false)
 const messageDraft = ref('')
 const sendingMessage = ref(false)
+const messageListRef = ref(null)
 
 const bindModalOpen = ref(false)
 const binding = ref(false)
@@ -406,17 +415,32 @@ async function loadReminders() {
   }
 }
 
-async function loadMessages() {
+async function loadMessages({ silent = false } = {}) {
   if (!currentElderUid.value) return
-  loadingMessages.value = true
+  if (!silent) loadingMessages.value = true
   try {
     const data = await familyApi.listMessages(currentElderUid.value)
     messages.value = data.messages || []
+    // 这个接口顺带把对方发来的标记为已读，侧边栏角标要跟着减，否则红点一直挂着
+    if (data.marked_read) familyStore.refreshUnread()
+    // 静默轮询不抢滚动位置，免得用户正在往上翻旧消息时被拽回底部
+    if (!silent) scrollToLatestMessage()
   } catch (error) {
-    errorMessage.value = error.message || '加载留言失败'
+    if (!silent) errorMessage.value = error.message || '加载留言失败'
   } finally {
-    loadingMessages.value = false
+    if (!silent) loadingMessages.value = false
   }
+}
+
+/** 留言是流水记录，先看最新一句：打开就停在底部 */
+function scrollToLatestMessage() {
+  // 等一帧让气泡排版完成再算高度，否则 scrollHeight 偏小、底部最后一条会被裁掉
+  nextTick(() => {
+    setTimeout(() => {
+      const el = messageListRef.value
+      if (el) el.scrollTop = el.scrollHeight
+    }, 30)
+  })
 }
 
 function handleElderChange() {
@@ -505,6 +529,7 @@ async function handleSendMessage() {
     await familyApi.sendMessage(currentElderUid.value, content)
     messageDraft.value = ''
     await loadMessages()
+    scrollToLatestMessage()
   } catch (error) {
     message.error(error.message || '发送失败')
   } finally {
@@ -512,14 +537,22 @@ async function handleSendMessage() {
   }
 }
 
-// 今日状态每 60 秒静默刷新，让子女不用手动刷新也能看到老人确认/标记的变化
+// 当前 tab 每 60 秒静默刷新：老人确认提醒、发来留言都不需要子女手动刷新页面
 const STATUS_POLL_INTERVAL_MS = 60 * 1000
 let statusPollTimer = null
 
-function refreshStatusSilently() {
-  if (activeTab.value !== 'status' || document.hidden) return
-  loadToday({ silent: true })
-  loadStats({ silent: true })
+/**
+ * 只刷新当前可见的 tab。
+ * 今日状态会变（老人确认/标记），留言会来新的，两者都要自动更新；
+ * 「提醒管理」是低频编辑页，不轮询，免得覆盖正在填的表单。
+ */
+function refreshActiveTabSilently() {
+  if (document.hidden) return
+  if (activeTab.value === 'status') {
+    loadToday({ silent: true })
+    loadStats({ silent: true })
+  }
+  if (activeTab.value === 'message') loadMessages({ silent: true })
 }
 
 function stopStatusPolling() {
@@ -531,11 +564,11 @@ function stopStatusPolling() {
 
 function startStatusPolling() {
   stopStatusPolling()
-  statusPollTimer = setInterval(refreshStatusSilently, STATUS_POLL_INTERVAL_MS)
+  statusPollTimer = setInterval(refreshActiveTabSilently, STATUS_POLL_INTERVAL_MS)
 }
 
 function handleVisibilityChange() {
-  if (!document.hidden) refreshStatusSilently()
+  if (!document.hidden) refreshActiveTabSilently()
 }
 
 onMounted(async () => {
@@ -552,8 +585,10 @@ onMounted(async () => {
 function handleAssistantDataChanged() {
   loadToday({ silent: true })
   loadStats({ silent: true })
+  familyStore.refreshUnread()
   if (activeTab.value === 'manage') loadReminders()
-  loadMessages()
+  // 不在留言 tab 时不读：读了会顺带把未读标记成已读，用户其实没看见
+  if (activeTab.value === 'message') loadMessages({ silent: true })
 }
 
 onUnmounted(() => {
@@ -621,6 +656,26 @@ onUnmounted(() => {
   background: #fff;
   padding: 8px 20px 20px;
   border-radius: 14px;
+}
+
+/* 留言 tab 上的未读数：小李点进「家人」就能看到有几句没读 */
+.tab-with-unread {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-unread {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ff4d4f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
 }
 
 .status-row {

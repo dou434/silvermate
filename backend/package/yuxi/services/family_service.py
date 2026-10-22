@@ -108,10 +108,16 @@ async def list_links(db: AsyncSession, current_user: User) -> dict:
 
     uids = {link.elder_uid for link in child_side} | {link.child_uid for link in elder_side}
     names = await _load_user_names(db, uids)
+    # 每位家人各有多少句没读：老人端据此默认打开有未读的那一位
+    unread_by_sender = await repository.count_unread_by_sender(db, current_user.uid)
 
     return {
         "as_elder": [
-            link_to_dict(link, child_name=names.get(link.child_uid)) for link in elder_side
+            {
+                **link_to_dict(link, child_name=names.get(link.child_uid)),
+                "unread_count": unread_by_sender.get(link.child_uid, 0),
+            }
+            for link in elder_side
         ],
         "as_child": [
             link_to_dict(link, elder_name=names.get(link.elder_uid)) for link in child_side

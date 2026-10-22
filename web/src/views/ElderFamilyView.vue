@@ -54,6 +54,64 @@
         </div>
       </section>
 
+      <!-- 家人的留言：老人也要能读到、能回。放在家人列表之前，
+           因为从首页角标点进来的人第一件事就是看家人说了什么 -->
+      <section v-if="activeLinks.length > 0" class="section">
+        <h2 class="section-title">家人的留言</h2>
+
+        <!-- 有多位家人时才需要切换 -->
+        <div v-if="activeLinks.length > 1" class="partner-tabs">
+          <button
+            v-for="link in activeLinks"
+            :key="link.id"
+            type="button"
+            class="partner-tab"
+            :class="{ active: messagePartnerUid === link.child_uid }"
+            @click="messagePartnerUid = link.child_uid"
+          >
+            {{ link.child_name || link.child_uid }}
+            <span v-if="link.unread_count" class="partner-unread">{{ link.unread_count }}</span>
+          </button>
+        </div>
+
+        <a-spin :spinning="loadingMessages">
+          <div ref="messageListRef" class="message-list">
+            <p v-if="messages.length === 0" class="message-empty">
+              {{ partnerName }}还没有留言
+            </p>
+            <div
+              v-for="msg in messages"
+              :key="msg.id"
+              class="message-row"
+              :class="{ 'is-mine': msg.from_uid === myUid }"
+            >
+              <div class="message-bubble">{{ msg.content }}</div>
+              <div class="message-time">{{ formatMessageTime(msg.created_at) }}</div>
+            </div>
+          </div>
+        </a-spin>
+
+        <div class="message-input">
+          <a-textarea
+            v-model:value="messageDraft"
+            :rows="2"
+            :maxlength="500"
+            class="message-textarea"
+            placeholder="给家人说句话，例如：我今天都挺好的"
+            @press-enter="handleSendMessage"
+          />
+          <a-button
+            type="primary"
+            size="large"
+            class="big-btn send-btn"
+            :loading="sendingMessage"
+            @click="handleSendMessage"
+          >
+            发送
+          </a-button>
+        </div>
+      </section>
+
       <!-- 已加入的家人 -->
       <section class="section">
         <h2 class="section-title">已加入的家人</h2>
@@ -99,13 +157,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { Modal } from 'ant-design-vue'
+import dayjs from 'dayjs'
 
 import { familyApi } from '@/apis/family_api'
 import { useUserStore } from '@/stores/user'
 import { useFamilyStore } from '@/stores/family'
+import { FAMILY_UPDATED_EVENT } from '@/composables/useAssistantCommand'
 
 const userStore = useUserStore()
 const familyStore = useFamilyStore()
@@ -119,6 +179,118 @@ const myUid = computed(() => userStore.uid || '')
 
 const pendingLinks = computed(() => links.value.filter((item) => item.status === 'pending'))
 const activeLinks = computed(() => links.value.filter((item) => item.status === 'active'))
+
+// ---- 家人的留言 ----
+// 留言是双向的：子女能写能读，老人原来只能在首页看到一个数字角标、点进来却没地方读。
+// 这里补上真正的对话区，老人才能收到家人说的话。
+const messagePartnerUid = ref('')
+const messages = ref([])
+const loadingMessages = ref(false)
+const sendingMessage = ref(false)
+const messageDraft = ref('')
+const messageListRef = ref(null)
+
+/** 老人最先关心的是最新一句，进来就停在底部，不用自己往下翻 */
+function scrollToLatest() {
+  // 等一帧让气泡排版完成再算高度，否则 scrollHeight 偏小、底部最后一条会被裁掉
+  nextTick(() => {
+    setTimeout(() => {
+      const el = messageListRef.value
+      if (el) el.scrollTop = el.scrollHeight
+    }, 30)
+  })
+}
+
+const partnerName = computed(() => {
+  const link = activeLinks.value.find((item) => item.child_uid === messagePartnerUid.value)
+  return link?.child_name || '家人'
+})
+
+/** 已读回执在服务端：读一次就把对方发来的标记为已读，所以角标要跟着减 */
+async function loadMessages({ silent = false } = {}) {
+  const uid = messagePartnerUid.value
+  if (!uid) return
+  if (!silent) loadingMessages.value = true
+  try {
+    const data = await familyApi.listMessages(uid)
+    // 中途切了联系人：丢掉旧响应，避免把上一个人的留言显示给下一个人
+    if (uid !== messagePartnerUid.value) return
+    messages.value = data.messages || []
+    if (data.marked_read) familyStore.refreshUnread()
+    // 静默轮询时不抢滚动位置：用户可能正在往回翻旧消息
+    if (!silent) scrollToLatest()
+  } catch (error) {
+    if (!silent) message.error(error.message || '加载留言失败')
+  } finally {
+    if (!silent) loadingMessages.value = false
+  }
+}
+
+async function handleSendMessage() {
+  const uid = messagePartnerUid.value
+  const content = messageDraft.value.trim()
+  if (!uid || !content) return
+  sendingMessage.value = true
+  try {
+    await familyApi.sendMessage(uid, content)
+    messageDraft.value = ''
+    await loadMessages({ silent: true })
+    scrollToLatest()
+    message.success('已经发出去了')
+  } catch (error) {
+    message.error(error.message || '发送失败，请稍后再试')
+  } finally {
+    sendingMessage.value = false
+  }
+}
+
+function formatMessageTime(value) {
+  return value ? dayjs(value).format('M月D日 HH:mm') : ''
+}
+
+// 绑定关系加载完再选中一位家人；重新拉列表时不要重置用户已经选中的那个人
+watch(
+  activeLinks,
+  (list) => {
+    const stillThere = list.some((item) => item.child_uid === messagePartnerUid.value)
+    if (stillThere) return
+    // 有未读的家人优先：老人从首页角标点进来，应该直接看到那条新消息，
+    // 否则有两位家人时默认落在无关的那位，看起来就像"没收到"
+    const withUnread = list.find((item) => (item.unread_count || 0) > 0)
+    messagePartnerUid.value = (withUnread || list[0])?.child_uid || ''
+  },
+  { immediate: true }
+)
+
+watch(messagePartnerUid, () => {
+  messages.value = []
+  loadMessages()
+})
+
+// 老人可能一直停在这一页等家人回话，60 秒补一次即可（和子女端同一节奏）
+const MESSAGE_POLL_INTERVAL_MS = 60 * 1000
+let messagePollTimer = null
+
+function refreshMessagesSilently() {
+  if (document.hidden || !messagePartnerUid.value) return
+  loadMessages({ silent: true })
+}
+
+function startMessagePolling() {
+  stopMessagePolling()
+  messagePollTimer = setInterval(refreshMessagesSilently, MESSAGE_POLL_INTERVAL_MS)
+}
+
+function stopMessagePolling() {
+  if (messagePollTimer) {
+    clearInterval(messagePollTimer)
+    messagePollTimer = null
+  }
+}
+
+function handleVisibilityChange() {
+  if (!document.hidden) refreshMessagesSilently()
+}
 
 function initialOf(name) {
   return (name || '家').trim().slice(0, 1)
@@ -186,7 +358,19 @@ async function copyUid() {
   }
 }
 
-onMounted(loadLinks)
+onMounted(() => {
+  loadLinks()
+  startMessagePolling()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  // 「问 AI」里刚给家人发过留言，回到本页要能看到这一条
+  window.addEventListener(FAMILY_UPDATED_EVENT, refreshMessagesSilently)
+})
+
+onUnmounted(() => {
+  stopMessagePolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener(FAMILY_UPDATED_EVENT, refreshMessagesSilently)
+})
 </script>
 
 <style lang="less" scoped>
@@ -374,5 +558,116 @@ onMounted(loadLinks)
   font-size: 15px;
   color: var(--text-secondary, #6b7280);
   margin: 10px 0 0;
+}
+
+/* ---- 家人的留言 ---- */
+.partner-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.partner-tab {
+  min-height: 46px;
+  padding: 0 20px;
+  border-radius: 12px;
+  border: 2px solid var(--border-color, #e5e7eb);
+  background: var(--bg-elevated, #fff);
+  font-size: 17px;
+  color: var(--text-primary, #1f2328);
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  .partner-unread {
+    display: inline-block;
+    min-width: 20px;
+    height: 20px;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: #ff4d4f;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 20px;
+    text-align: center;
+  }
+}
+
+.partner-tab.active {
+  border-color: #f0b66b;
+  background: #fff7e8;
+  color: #a35a00;
+  font-weight: 600;
+}
+
+.message-list {
+  /* 老人端字号大，固定 420px 一屏只能看三四句，按视口高度伸缩更从容 */
+  max-height: min(48vh, 480px);
+  min-height: 160px;
+  overflow-y: auto;
+  padding: 8px 4px;
+}
+
+.message-empty {
+  font-size: 16px;
+  color: var(--text-secondary, #6b7280);
+  padding: 18px 0;
+  text-align: center;
+}
+
+.message-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 16px;
+
+  &.is-mine {
+    align-items: flex-end;
+  }
+}
+
+/* 老人端：字号比子女端大一档，行距放宽，一屏少几行但看得清 */
+.message-bubble {
+  max-width: 78%;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: var(--bg-container, #f6f8fa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  font-size: 18px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+.is-mine .message-bubble {
+  background: #fff7e8;
+  border-color: #f0b66b;
+  color: #7a4200;
+}
+
+.message-time {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.message-input {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+.message-textarea {
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.send-btn {
+  min-width: 104px;
+  flex: 0 0 auto;
 }
 </style>

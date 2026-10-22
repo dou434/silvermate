@@ -99,6 +99,8 @@ onMounted(async () => {
   await Promise.all([infoStore.loadInfoConfig(), getRemoteDatabase()])
   // 绑定关系决定侧边栏显示「家人」还是「我的家人」，要在首屏就拿到，避免菜单闪一下再变
   familyStore.refreshLinks()
+  startUnreadPolling()
+  document.addEventListener('visibilitychange', handleUnreadVisibilityChange)
   await initAgentNavigation()
   await getRemoteConfig()
   // 仅管理员加载任务中心数据
@@ -111,6 +113,8 @@ onMounted(async () => {
 onUnmounted(() => {
   narrowScreenQuery?.removeEventListener('change', handleNarrowScreenChange)
   narrowScreenQuery = null
+  stopUnreadPolling()
+  document.removeEventListener('visibilitychange', handleUnreadVisibilityChange)
 })
 
 const route = useRoute()
@@ -126,7 +130,40 @@ const organizationName = computed(() => {
 
 // 角色推断：后端 users 表不区分老人/子女，只能靠绑定关系判断。
 // 详见 stores/family.js 里 isElderUser 的注释。
-const { isElderUser } = storeToRefs(familyStore)
+const { isElderUser, unreadMessages } = storeToRefs(familyStore)
+
+/**
+ * 未读留言轮询。
+ *
+ * 留言是别人异步发过来的：小李可能正停在「我的提醒」页，只在留言页刷新等于收不到。
+ * 所以提到布局层每 60 秒拉一次未读数，侧边栏「家人」上的角标就是唯一入口提示。
+ * 60 秒是权衡：再密是白耗请求，再疏则老人发完话子女可能半天看不到红点。
+ */
+const UNREAD_POLL_INTERVAL_MS = 60 * 1000
+let unreadPollTimer = null
+
+function refreshUnreadQuietly() {
+  if (document.hidden) return
+  familyStore.refreshUnread()
+}
+
+function startUnreadPolling() {
+  stopUnreadPolling()
+  familyStore.refreshUnread()
+  unreadPollTimer = setInterval(refreshUnreadQuietly, UNREAD_POLL_INTERVAL_MS)
+}
+
+function stopUnreadPolling() {
+  if (unreadPollTimer) {
+    clearInterval(unreadPollTimer)
+    unreadPollTimer = null
+  }
+}
+
+// 从后台切回来时立刻补一次，不用干等下一个轮询周期
+function handleUnreadVisibilityChange() {
+  if (!document.hidden) familyStore.refreshUnread()
+}
 
 // 下面是导航菜单部分，添加智能体项
 const mainList = computed(() => {
@@ -148,13 +185,15 @@ const mainList = computed(() => {
           name: '我的家人',
           path: '/elder/family',
           icon: Users,
-          activeIcon: Users
+          activeIcon: Users,
+          badge: unreadMessages.value
         }
       : {
           name: '家人',
           path: '/family',
           icon: Users,
-          activeIcon: Users
+          activeIcon: Users,
+          badge: unreadMessages.value
         },
     {
       name: '问 AI',
@@ -395,6 +434,7 @@ provide('settingsModal', {
             />
           </a-tooltip>
           <span class="nav-text">{{ item.name }}</span>
+          <span v-if="item.badge" class="nav-badge">{{ item.badge > 99 ? '99+' : item.badge }}</span>
         </RouterLink>
       </div>
       <div class="fill">
@@ -638,6 +678,7 @@ div.header,
     display: flex;
     align-items: center;
     justify-content: flex-start;
+    position: relative;
     width: 100%;
     height: @sidebar-item-height;
     padding: 0 @sidebar-item-padding-x;
@@ -675,6 +716,25 @@ div.header,
         opacity 0.12s ease,
         margin-left 0.18s ease,
         max-width 0.18s ease;
+    }
+
+    // 未读留言角标：绝对定位在菜单项右侧，侧边栏收起时也不会被 nav-text 的过渡挤掉
+    .nav-badge {
+      position: absolute;
+      top: 50%;
+      right: 8px;
+      transform: translateY(-50%);
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      background: #ff4d4f;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 18px;
+      text-align: center;
+      pointer-events: none;
     }
 
     & > svg:focus {

@@ -122,3 +122,16 @@ class FamilyRepository:
             select(func.count(FamilyMessage.id)).where(FamilyMessage.to_uid == to_uid, FamilyMessage.read_at.is_(None))
         )
         return int(result.scalar() or 0)
+
+    async def count_unread_by_sender(self, db: AsyncSession, to_uid: str) -> dict[str, int]:
+        """按发送人分组统计未读数。
+
+        老人可能有多个家人，只给总数的话他不知道该点开谁的对话；
+        带上分组计数就能默认打开"有新消息的那一位"。
+        """
+        result = await db.execute(
+            select(FamilyMessage.from_uid, func.count(FamilyMessage.id))
+            .where(FamilyMessage.to_uid == to_uid, FamilyMessage.read_at.is_(None))
+            .group_by(FamilyMessage.from_uid)
+        )
+        return {from_uid: int(count) for from_uid, count in result.all()}
