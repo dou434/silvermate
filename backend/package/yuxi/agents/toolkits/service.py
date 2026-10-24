@@ -6,6 +6,28 @@ from yuxi.utils import logger
 _metadata_cache: list[dict] = []
 
 
+def _tool_call_input_schema(tool_obj) -> dict:
+    """取模型侧真正会看到的参数 schema。
+
+    **不能用 ``args_schema``**：带 ``runtime: ToolRuntime`` 的工具，它的 args_schema
+    里含一个 ToolRuntime 字段，而 ToolRuntime 内部有 Callable，pydantic 生成 JSON
+    Schema 时会抛 ``Cannot generate a JsonSchema for core_schema.CallableSchema``。
+    这个函数在准备对话上下文时就要跑，一旦抛错是**整轮对话失败**，不是某次工具调用失败
+    （present_artifacts / ocr_parse_file 这类工具以前靠手写 args_schema 才躲过去）。
+    ``tool_call_schema`` 已经把 runtime、state 这些注入参数剔掉了。
+    """
+    schema = getattr(tool_obj, "tool_call_schema", None) or getattr(tool_obj, "args_schema", None)
+    if not schema:
+        return {}
+    if isinstance(schema, dict):
+        return schema
+    if hasattr(schema, "model_json_schema"):
+        return schema.model_json_schema()
+    if hasattr(schema, "schema"):
+        return schema.schema()
+    return {}
+
+
 def _extract_tool_info(tool_obj) -> dict:
     """从 tool_obj 提取基础信息"""
     metadata = getattr(tool_obj, "metadata", {}) or {}
@@ -17,18 +39,15 @@ def _extract_tool_info(tool_obj) -> dict:
         "args": [],
     }
 
-    if hasattr(tool_obj, "args_schema") and tool_obj.args_schema:
-        schema = tool_obj.args_schema
-        if hasattr(schema, "schema"):
-            schema = schema.schema()
-        for arg_name, arg_info in schema.get("properties", {}).items():
-            info["args"].append(
-                {
-                    "name": arg_name,
-                    "type": arg_info.get("type", ""),
-                    "description": arg_info.get("description", ""),
-                }
-            )
+    schema = _tool_call_input_schema(tool_obj)
+    for arg_name, arg_info in schema.get("properties", {}).items():
+        info["args"].append(
+            {
+                "name": arg_name,
+                "type": arg_info.get("type", ""),
+                "description": arg_info.get("description", ""),
+            }
+        )
     return info
 
 

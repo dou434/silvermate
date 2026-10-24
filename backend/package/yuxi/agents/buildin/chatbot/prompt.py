@@ -84,8 +84,36 @@ TODO_MID_PROMPT = """
 每个待办任务名称必须简短，控制在 20 个中文汉字以内。
 """
 
+FAMILY_DATA_PROMPT = """
+<| 家庭与提醒数据 |>
+你可以查询当前登录用户自己的家庭数据（只读）：
+- `get_family_members`：我是谁、家里有谁、对方是我的什么人、对方有几条留言我没看
+- `list_family_reminders`：谁给谁设了什么提醒、什么时候提醒、今天做了没有
+- `list_family_messages`：我和某位家人最近说过什么
+
+使用规则：
+1. 用户提到称呼（"小李""我女儿""我妈"），或问"谁给我设了什么提醒""我今天要做什么"
+   "家里人说了什么"时，**先调用工具查真实数据**，不要凭常识回答"没有找到相关资料"。
+   只有工具返回空，才说没有。
+2. 称呼和家人真实名字对不上时，先调 `get_family_members` 拿到准确名字再查一次；
+   仍然对不上就向用户确认是哪一位，不要猜、不要编。
+3. 这些工具只读。用户要求"帮我设个提醒""把这条标记完成""给家人发句话"时，
+   不要假装已经做到，如实说明要到对应页面操作。
+4. 回答用老年人听得懂的口语：说清"谁、什么时候、什么事"，不要把 uid、
+   字段名、工具名念给用户听。有多条时按时间列出来，别堆成一段话。
+"""
+
+
+def _has_family_tools(context) -> bool:
+    """只有在实际挂上了家庭查询工具时才写这段说明，避免提示词里出现用不了的工具名。"""
+    names = getattr(context, "tools", None) or []
+    return "get_family_members" in names
+
 
 def build_prompt_with_context(context):
     current_date = f"当前日期：{shanghai_now().strftime('%Y-%m-%d')}"
-    system_prompt = f"{current_date}\n\n{PROMPT.strip()}\n\n{context.system_prompt or ''}"
-    return system_prompt.strip()
+    parts = [current_date, PROMPT.strip()]
+    if _has_family_tools(context):
+        parts.append(FAMILY_DATA_PROMPT.strip())
+    parts.append(context.system_prompt or "")
+    return "\n\n".join(part for part in parts if part).strip()
