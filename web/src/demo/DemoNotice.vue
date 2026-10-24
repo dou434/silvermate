@@ -7,7 +7,6 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Modal } from 'ant-design-vue'
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
 
 const STORAGE_KEY = 'demo-mode-acknowledged'

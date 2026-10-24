@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -17,13 +17,31 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from yuxi.services import assistant_command_service, family_service, reminder_service
 from yuxi.storage.postgres.models_business import Base, User
 from yuxi.storage.postgres.models_family import FamilyLink
+from yuxi.utils.datetime_utils import SHANGHAI_TZ
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.unit]
 
+# 固定"当天上午 10 点"作为测试时钟，用例结果不再随实际运行时刻变化：
+# 09:00 已到点，12:00 还没到点，两者恒在同一个上海自然日内。
+_FROZEN_NOW = datetime(2025, 1, 15, 10, 0, tzinfo=SHANGHAI_TZ)
+_DUE_AT = _FROZEN_NOW - timedelta(hours=1)
+_LATER_TODAY_AT = _FROZEN_NOW + timedelta(hours=2)
+
+
+def _freeze_clock(monkeypatch) -> None:
+    """把 reminder_service 的时间源钉死在 _FROZEN_NOW。"""
+    monkeypatch.setattr(reminder_service, "shanghai_now", lambda: _FROZEN_NOW)
+    monkeypatch.setattr(
+        reminder_service,
+        "utc_now_naive",
+        lambda: _FROZEN_NOW.astimezone(UTC).replace(tzinfo=None),
+    )
+
 
 @pytest_asyncio.fixture()
-async def ctx():
+async def ctx(monkeypatch):
     """老人 + 已绑定子女 + 陌生人。"""
+    _freeze_clock(monkeypatch)
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -48,13 +66,6 @@ async def ctx():
     await engine.dispose()
 
 
-def _soon_today() -> datetime:
-    """当天当前整点，落在宽限期内，不会因为跑在几点被当成过期提醒。"""
-    from yuxi.utils.datetime_utils import shanghai_now
-
-    return shanghai_now().replace(minute=0, second=0, microsecond=0)
-
-
 async def _make_delivered_reminder(db, child, elder, title="吃降压药"):
     """建一条提醒并把执行记录推进到 delivered，模拟"已经到点了"。"""
     created = await reminder_service.create_reminder(
@@ -64,7 +75,7 @@ async def _make_delivered_reminder(db, child, elder, title="吃降压药"):
         title=title,
         content="饭后一片",
         category="用药",
-        remind_at=_soon_today(),
+        remind_at=_DUE_AT,
     )
     today = await reminder_service.list_today(db, elder)
     occurrence_id = next(item["id"] for item in today["items"] if item["reminder_id"] == created["id"])
@@ -164,7 +175,7 @@ async def test_complete_all_settles_only_due_items(ctx):
         title="晚上泡脚",
         content=None,
         category="other",
-        remind_at=_soon_today() + timedelta(hours=3),
+        remind_at=_LATER_TODAY_AT,
     )
 
     result = await assistant_command_service.handle(db, elder, "提醒都做完了")

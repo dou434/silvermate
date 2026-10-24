@@ -10,7 +10,8 @@ export default defineConfig([
     files: ['**/*.{vue,js,mjs,jsx}'],
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
+  // 只 lint 源码；dist / dist-agent / dist-voice 等构建产物一律排除
+  globalIgnores(['**/dist/**', '**/dist-*/**', '**/dist-ssr/**', '**/coverage/**']),
 
   {
     languageOptions: {

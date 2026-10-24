@@ -41,6 +41,13 @@ pnpm dev
 > 用 `127.0.0.1` 不要用 `localhost`：Windows 上 localhost 优先解析到 IPv6，
 > 而 Docker 的端口映射只监听 IPv4，会超时。
 
+> **pnpm 版本**：由 `web/package.json` 的 `packageManager` 锁定为 `10.11.0`。
+> 首次拉代码后执行一次 `corepack enable`，然后用 `corepack pnpm --version`
+> 确认输出 `10.11.0`。不要因为一次本地安装把 pnpm 升到 11——锁文件会大面积变动。
+
+> Docker CLI 不在 PATH 时，`dev.ps1` 会自动探测
+> `%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin`，普通终端仍需自行添加或改用 `dev.ps1`。
+
 ---
 
 ## 二、停止
@@ -66,9 +73,28 @@ docker compose down      # 停容器（数据保留在 docker/volumes/）
 | MinIO | http://localhost:9000（控制台 9001） |
 | Milvus | localhost:19530 |
 | 沙箱管理 | localhost:8002 |
-| 超管账号 | `zwj` |
+| 超管账号 | 由 `YUXI_SUPER_ADMIN_UID` 决定 |
 
-密码见 `backend/scripts/seed_initial_users.py`，**这个文件里的密码是明文硬编码的，二次开发第一件事该改掉。**
+初始账号信息全部走环境变量，`backend/scripts/seed_initial_users.py` 里没有任何默认值。
+首次初始化前在 `.env` 中补齐这 5 个变量，缺任何一个脚本都会直接失败：
+
+```dotenv
+YUXI_SUPER_ADMIN_UID=
+YUXI_SUPER_ADMIN_NAME=
+YUXI_SUPER_ADMIN_PHONE_NUMBER=
+YUXI_SUPER_ADMIN_PASSWORD=
+YUXI_DEFAULT_USER_PASSWORD=
+```
+
+> 如果你是用旧版本初始化的环境，管理员密码曾经以明文写在脚本里并进过 Git 历史，
+> 视为已泄露，请立刻改密码。轮换时先在本地 `.env` 设置新的
+> `YUXI_SUPER_ADMIN_PASSWORD`，再执行：
+
+```powershell
+docker compose exec api uv run --no-sync --no-dev python scripts/rotate_admin_password.py
+```
+
+脚本只会轮换超级管理员密码，不会输出密码内容。
 
 ---
 

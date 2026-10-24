@@ -11,7 +11,6 @@ const _currentSpeakingId = ref(null)
 
 export function useTTS() {
   const isSupported = ref(false)
-  let currentUtterance = null
   let keepaliveTimer = null
   let cachedVoices = []
 
@@ -144,7 +143,6 @@ export function useTTS() {
       stopKeepalive()
     }
 
-    currentUtterance = utterance
     window.speechSynthesis.speak(utterance)
   }
 
@@ -157,7 +155,6 @@ export function useTTS() {
     window.speechSynthesis.cancel()
     _isSpeaking.value = false
     _currentSpeakingId.value = null
-    currentUtterance = null
   }
 
   /**

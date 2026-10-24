@@ -12,6 +12,12 @@ param([string]$Action = "all")
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Docker Desktop CLI 不在 PATH 时，自动探测常见安装目录
+$DockerCliPath = Join-Path $env:LOCALAPPDATA "Programs\DockerDesktop\resources\bin"
+if (-not (Get-Command docker -ErrorAction SilentlyContinue) -and (Test-Path (Join-Path $DockerCliPath "docker.exe"))) {
+    $env:Path = "$DockerCliPath;$env:Path"
+}
+
 function Start-Docker {
     Write-Host "`n[1/2] 启动 Docker（后端 API + Worker + PostgreSQL + Redis + MinIO + Sandbox）..." -ForegroundColor Cyan
     cd $ProjectRoot
@@ -23,7 +29,8 @@ function Start-Docker {
 function Start-Frontend {
     Write-Host "`n[2/2] 启动前端 (localhost:5173)..." -ForegroundColor Cyan
     cd "$ProjectRoot\web"
-    Start-Process -NoNewWindow -FilePath "pnpm" -ArgumentList "run","dev" -WorkingDirectory "$ProjectRoot\web"
+    # 统一走 Corepack 中由 web/package.json 锁定的 pnpm 版本（当前 10.11.0）
+    Start-Process -NoNewWindow -FilePath "corepack" -ArgumentList "pnpm","run","dev" -WorkingDirectory "$ProjectRoot\web"
     Write-Host "前端已启动: http://localhost:5173" -ForegroundColor Green
 }
 

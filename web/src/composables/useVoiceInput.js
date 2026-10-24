@@ -63,8 +63,8 @@ export function useVoiceInput(onResult) {
         recognition.onerror = null
         recognition.onend = null
         recognition.stop()
-      } catch (e) {
-        // ignore
+      } catch {
+        // 卸载阶段识别器可能已失效，忽略
       }
       recognition = null
     }

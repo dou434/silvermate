@@ -70,19 +70,6 @@ const userInfo = {
   department_name: '管理部'
 }
 
-const loginResponse = {
-  access_token: 'demo-token-xxxxx',
-  token_type: 'bearer',
-  user_id: 1,
-  username: 'admin',
-  uid: 'admin',
-  phone_number: '138****8888',
-  avatar: '',
-  role: 'superadmin',
-  department_id: 1,
-  department_name: '管理部'
-}
-
 // ========== 智能体 ==========
 
 const agents = {
@@ -384,44 +371,6 @@ const knowledgeBases = {
   ]
 }
 
-const knowledgeFiles = {
-  files: [
-    {
-      file_id: 'file_024847',
-      filename: '老年人权益保障法要点.md',
-      file_type: 'md',
-      status: 'ready',
-      file_size: 3072,
-      created_at: '2026-06-15T10:05:00Z'
-    },
-    {
-      file_id: 'file_2c44fe',
-      filename: '老年慢性病日常管理指南.md',
-      file_type: 'md',
-      status: 'ready',
-      file_size: 5120,
-      created_at: '2026-06-15T10:06:00Z'
-    },
-    {
-      file_id: 'file_c6bb21',
-      filename: '老年人护理操作规范.md',
-      file_type: 'md',
-      status: 'ready',
-      file_size: 4096,
-      created_at: '2026-06-15T10:07:00Z'
-    },
-    {
-      file_id: 'file_d86cce',
-      filename: '老年人防诈骗安全指南.md',
-      file_type: 'md',
-      status: 'ready',
-      file_size: 2560,
-      created_at: '2026-06-15T10:08:00Z'
-    }
-  ],
-  total: 4
-}
-
 const knowledgeTree = {
   tree: [
     { name: '老年人权益保障法要点.md', type: 'file', file_id: 'file_024847' },
@@ -699,7 +648,7 @@ export const mockRoutes = {
   // 对话线程
   'GET /api/chat/threads': () => threads,
   'POST /api/chat/thread': (data) => createThread(data.agent_id, data.title),
-  'PUT /api/chat/thread/:threadId': (data) => ({ success: true }),
+  'PUT /api/chat/thread/:threadId': () => ({ success: true }),
   'DELETE /api/chat/thread/:threadId': () => ({ success: true }),
 
   // 历史消息

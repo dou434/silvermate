@@ -34,7 +34,8 @@ export const generatePixelAvatar = (id) => {
 
 export const getAvatarInitials = (name, kind = 'user') => {
   const normalizedName = String(name || '').trim()
-  if (!normalizedName) return ''
+  // 无名字时按身份给占位字，避免头像区域完全空白
+  if (!normalizedName) return kind === 'agent' ? '智能' : '用户'
   return Array.from(normalizedName).slice(0, 2).join('')
 }
 

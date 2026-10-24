@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from yuxi.agents.backends import sandbox as sandbox_module
 from yuxi.agents.skills import service as skill_service
 from yuxi.agents.toolkits.buildin import install_skill as exported_install_skill
 
@@ -269,14 +270,10 @@ def test_prepare_skill_invalid_virtual_path_does_not_fallback_to_sandbox(monkeyp
         def __init__(self, *_args, **_kwargs):
             calls["fallback"] = True
 
-    monkeypatch.setattr(
-        "yuxi.agents.backends.sandbox.resolve_virtual_path",
-        resolve_virtual_path,
-    )
-    monkeypatch.setattr(
-        "yuxi.agents.backends.sandbox.ProvisionerSandboxBackend",
-        FakeProvisionerSandboxBackend,
-    )
+    # 直接打在已加载的 sandbox 模块对象上：字符串点号路径会走 yuxi.__getattr__，
+    # 在整套用例一起跑时 yuxi.agents 未必挂在 yuxi 包上，导致解析失败。
+    monkeypatch.setattr(sandbox_module, "resolve_virtual_path", resolve_virtual_path)
+    monkeypatch.setattr(sandbox_module, "ProvisionerSandboxBackend", FakeProvisionerSandboxBackend)
     monkeypatch.setattr(skill_service, "is_valid_skill_slug", lambda _slug: True)
 
     with pytest.raises(ValueError, match="path traversal detected"):
