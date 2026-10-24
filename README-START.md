@@ -158,6 +158,8 @@ docker compose down
 Remove-Item -Recurse -Force docker\volumes
 docker compose up -d
 docker compose exec api uv run python scripts/seed_initial_users.py
+# （可选，需先在界面配置 Embedding 模型）挂载养老知识库：
+# docker compose exec api uv run python scripts/seed_knowledge_base.py
 ```
 
 **注意**：删 `docker/volumes` 会清空数据库、MinIO 文件、Milvus 向量数据，不可恢复。
@@ -184,7 +186,8 @@ docker start $(Get-Content .dify-containers-backup.txt)
 | SOS 按钮 | `web/src/components/ElderlyEmergencyButton.vue` |
 | 新增技能 | `backend/package/yuxi/agents/skills/buildin/<slug>/SKILL.md` + 注册到 `buildin/__init__.py` |
 | 新增智能体后端 | `backend/package/yuxi/agents/<name>/`，继承 `BaseAgent` |
-| 知识库文档 | `knowledge_docs/*.md`（改完需在界面重新上传） |
+| 智能体人设（银发智伴） | `backend/package/yuxi/agents/buildin/chatbot/prompt.py`（代码内置，改完重启 api/worker 容器即生效） |
+| 知识库文档 | `knowledge_docs/*.md`（由 `scripts/seed_knowledge_base.py` 按文件名幂等同步；内容修改后需删库内旧文档重跑，或在界面重新上传） |
 | 后端接口 | `server/routers/` + `web/src/apis/` |
 
-**4 个养老智能体不在代码里**，需要在管理界面手工创建。这是项目最大的缺口。
+智能体人设与 4 类养老场景能力（健康 / 政策 / 护理 / 陪伴）全部在代码里，重启容器即生效；养老知识库通过 seed 脚本一键创建并挂载到默认智能体，无需在管理界面手工创建智能体。

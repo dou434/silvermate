@@ -64,6 +64,7 @@ services:
       - ./docker/volumes/models:/app/models
       - ./backend/test:/app/test
       - ./backend/scripts:/app/scripts
+      - ./knowledge_docs:/app/knowledge_docs:ro
       - ./docker/sandbox_provisioner:/app/docker/sandbox_provisioner:ro
       - ./.env:/app/.env
       - /var/run/docker.sock:/var/run/docker.sock

@@ -20,20 +20,19 @@
 
 ### AI 对话
 
-- **4 个养老场景智能体**：银发健康顾问、养老政策助手、护理知识助手、生活陪伴
+- **内置 4 类养老场景能力**（健康顾问 / 政策助手 / 护理知识 / 生活陪伴）：代码内置人设，「问 AI」单一入口自动识别场景，重启容器即生效
 - **多模型支持**：DeepSeek、SiliconFlow、OpenAI 兼容 API、Anthropic 等
-- **子智能体调度**：主智能体可自动委派子智能体完成专项任务
+- **子智能体调度**（平台通用能力）：主智能体可自动委派子智能体完成专项任务
 - **快捷问题入口**：无对话时展示常见问题，降低使用门槛
 - **历史对话搜索**：命令面板式搜索，支持方向键选择与快速跳转
 
 ### 知识库
 
-- **4 份养老领域文档**：政策法规、健康管理、护理规范、防诈骗指南
+- **4 份养老领域文档**：政策法规、健康管理、护理规范、防诈骗指南（由 seed 脚本一键入库并挂载到默认智能体）
 - **RAG 检索增强**（需配置 Embedding API）：从知识库中语义检索相关内容，回答附带来源引用
 - **知识图谱**：基于 Neo4j 构建实体关系图谱，支持可视化浏览
 - **思维导图**：自动生成知识库文件结构思维导图，支持增量更新
 - **多格式文档解析**：Markdown、DOCX、PDF、HTML，支持 MinerU / PaddleOCR / RapidOCR
-- **临时方案**：未配置 Embedding 前，知识内容已嵌入 Agent 系统提示词
 
 ### 适老化设计
 
@@ -120,7 +119,7 @@ docker compose --profile full --profile all up -d
 1. 设置管理员账号密码
 2. 系统设置 → 模型配置 → 启用 SiliconFlow → 确认 API Key → 默认模型为 `deepseek-ai/DeepSeek-V4-Flash`
 3. （可选）启用 SiliconFlow → 填入 API Key → 添加 `BAAI/bge-m3` 作为 Embedding 模型
-4. 智能体管理 → 确认 4 个养老智能体已就绪
+4. （可选，依赖上一步）挂载养老知识库：`docker compose exec api uv run python scripts/seed_knowledge_base.py`（幂等可重复执行；配了多个 Embedding 模型时需以环境变量 `YUXI_KB_EMBEDDING_MODEL_SPEC` 指定）
 5. 开始对话
 
 ## 项目结构
@@ -203,6 +202,7 @@ make test-e2e        # 端到端测试
 
 # 数据管理
 make seed            # 初始化种子用户
+make seed-kb         # 创建养老知识库并挂载到默认智能体（需先配置 Embedding 模型）
 make reset           # 重置全部数据并重新初始化
 make down            # 停止全部容器
 ```
