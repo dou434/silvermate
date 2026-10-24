@@ -7,20 +7,7 @@
     @ok="handleSave"
   >
     <div class="elderly-settings-panel">
-      <!-- 紧急联系人 -->
       <a-form layout="vertical">
-        <a-form-item label="紧急联系人电话">
-          <a-input
-            v-model:value="emergencyContact"
-            placeholder="请输入家人或监护人的电话号码"
-            allow-clear
-            size="large"
-          />
-          <div class="font-size-preview">
-            配置后，紧急求助按钮中的"联系家人"将拨打此号码
-          </div>
-        </a-form-item>
-
         <!-- 字号偏好 -->
         <a-form-item label="界面字号">
           <a-radio-group v-model:value="fontSizePref" size="large">
@@ -126,7 +113,6 @@ const visible = computed({
   set: (v) => emit('update:open', v),
 })
 
-const emergencyContact = ref('')
 const fontSizePref = ref('large')
 const autoRead = ref(false)
 // 默认开：提醒的核心就是"要被听见"，默认关等于没做这个功能
@@ -135,9 +121,6 @@ const alertSound = ref(true)
 const reminderVoice = ref(true)
 
 // 初始化：从 localStorage 读取
-const savedContact = localStorage.getItem('elderly_emergency_contact')
-if (savedContact) emergencyContact.value = savedContact
-
 const savedFont = localStorage.getItem('elderly_font_size')
 if (savedFont) fontSizePref.value = savedFont
 
@@ -154,9 +137,6 @@ const previewStyle = computed(() => {
 })
 
 function handleSave() {
-  // 保存紧急联系人
-  localStorage.setItem('elderly_emergency_contact', emergencyContact.value)
-
   // 保存字号偏好
   localStorage.setItem('elderly_font_size', fontSizePref.value)
   applyFontSize(fontSizePref.value)
@@ -181,9 +161,6 @@ function handleSave() {
       tts.speak(sample, 'settings-preview')
     }
   }
-
-  // 通知紧急按钮组件更新
-  window.dispatchEvent(new Event('elderly-contact-updated'))
 
   message.success('设置已保存')
   visible.value = false

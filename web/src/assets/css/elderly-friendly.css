@@ -139,6 +139,45 @@
   margin-bottom: 2px;
 }
 
+/* SOS 弹窗里可拨打的绑定家人列表 */
+.elderly-emergency-family {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.elderly-emergency-contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border: 1px solid var(--color-error-100, #ffccc7);
+  border-radius: 10px;
+  background: var(--color-error-50, #fff2f0);
+  color: var(--gray-800, #2c2f33);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.elderly-emergency-contact:hover {
+  border-color: var(--color-error-500, #ff4d4f);
+}
+
+.elderly-emergency-contact-phone {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--color-error-500, #ff4d4f);
+}
+
+/* 「通知家人 / 我没事了」的结果反馈 */
+.elderly-emergency-feedback {
+  margin: 16px 0 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
 /* ===== 适老化设置按钮 ===== */
 .elderly-settings-btn {
   position: fixed !important;

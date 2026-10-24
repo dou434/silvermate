@@ -35,6 +35,11 @@ REMINDER_OCCURRENCE_STATUSES = (
     "missed",
 )
 
+# 紧急事件来源：老人按下 SOS 按钮 / 聊天命中紧急关键词后老人选择通知
+EMERGENCY_EVENT_SOURCES = ("sos", "keyword")
+# 紧急事件状态：待处理 / 老人已标记「我没事了」
+EMERGENCY_EVENT_STATUSES = ("open", "resolved")
+
 
 class FamilyLink(Base):
     """家庭绑定关系：一条记录表示一位子女可以照护一位老人。
@@ -170,6 +175,46 @@ class ReminderOccurrence(Base):
             "confirmed_at": format_utc_datetime(self.confirmed_at),
             "finished_at": format_utc_datetime(self.finished_at),
             "note": self.note,
+            "created_at": format_utc_datetime(self.created_at),
+        }
+
+
+class EmergencyEvent(Base):
+    """老人的紧急求助事件。
+
+    由老人侧触发（SOS 按钮或聊天紧急关键词），落库后由 ``emergency_service``
+    通过 ``family_messages`` 通知 active 绑定的子女；紧急性由本表承载，
+    ``FamilyMessage`` 不加紧急标记列，留言内容以「【紧急求助】」前缀区分。
+    """
+
+    __tablename__ = "emergency_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    elder_uid = Column(
+        String(64),
+        ForeignKey("users.uid", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="求助的老人 uid",
+    )
+    source = Column(String(16), nullable=False, comment="sos/keyword")
+    category = Column(String(32), nullable=False, default="general", comment="急症类型：cardiac/stroke/fall 等，sos 时为 general")
+    detail = Column(Text, nullable=True, comment="触发时的补充说明，如聊天命中的原话")
+    status = Column(String(16), nullable=False, default="open", index=True, comment="open/resolved")
+    resolved_at = Column(DateTime, nullable=True, comment="老人标记「我没事了」的时间")
+    created_at = Column(DateTime, default=utc_now_naive)
+
+    __table_args__ = (Index("ix_emergency_events_elder_status_time", "elder_uid", "status", "created_at"),)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "elder_uid": self.elder_uid,
+            "source": self.source,
+            "category": self.category,
+            "detail": self.detail,
+            "status": self.status,
+            "resolved_at": format_utc_datetime(self.resolved_at),
             "created_at": format_utc_datetime(self.created_at),
         }
 

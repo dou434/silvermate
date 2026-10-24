@@ -646,6 +646,7 @@ import { useFamilyStore } from '@/stores/family'
 import { storeToRefs } from 'pinia'
 import { MessageProcessor } from '@/utils/messageProcessor'
 import { agentApi, threadApi } from '@/apis'
+import { familyApi } from '@/apis/family_api'
 import HumanApprovalModal from '@/components/HumanApprovalModal.vue'
 import { useApproval } from '@/composables/useApproval'
 import { useAgentThreadState } from '@/composables/useAgentThreadState'
@@ -2553,6 +2554,29 @@ const selectThreadFromRoute = async (threadId) => {
   return true
 }
 
+/**
+ * 把聊天中命中的紧急情况通知绑定家人。
+ * 后端负责落库、10 分钟冷却去重与分发；这里只按结果给出可感知的反馈。
+ */
+const notifyFamilyEmergency = async (emergency, text) => {
+  try {
+    const res = await familyApi.reportEmergency({
+      source: 'keyword',
+      category: emergency.type,
+      detail: text.slice(0, 200)
+    })
+    if (res.deduped) {
+      message.info('10 分钟内已通知过家人，不会重复发送')
+    } else if (res.notified?.length) {
+      message.success(`已通知 ${res.notified.length} 位家人，请保持电话畅通`)
+    } else {
+      message.warning('您还没有绑定家人，未能通知。请让家人在他们的账号里绑定您')
+    }
+  } catch (error) {
+    message.error(error.message || '通知家人失败，请重试')
+  }
+}
+
 const handleSendMessage = async ({ image } = {}) => {
   const text = userInput.value.trim()
   const imageContent = image?.imageContent || null
@@ -2573,9 +2597,14 @@ const handleSendMessage = async ({ image } = {}) => {
   if (emergency) {
     Modal.warning({
       title: `⚠️ 紧急安全提醒：${emergency.label}`,
-      content: emergency.advice + '\n\n如情况紧急，请点击右下角 SOS 按钮拨打120。',
-      okText: '我知道了',
+      content: emergency.advice + '\n\n如情况紧急，请立即拨打120，也可以让家人知道您的情况。',
+      okText: '通知家人',
+      okCancel: true,
+      cancelText: '我知道了',
+      okButtonProps: { danger: true },
       width: 480,
+      // 防误报：关键词命中不自动发送，老人点了「通知家人」才落库通知
+      onOk: () => notifyFamilyEmergency(emergency, text)
     })
     // 紧急情况仍允许继续发送，让 AI 也能给出建议
   }

@@ -12,6 +12,7 @@ import {
   PanelLeftOpen,
   MessageCirclePlus,
   Search,
+  Siren,
   Users
 } from 'lucide-vue-next'
 
@@ -130,7 +131,13 @@ const organizationName = computed(() => {
 
 // 角色推断：后端 users 表不区分老人/子女，只能靠绑定关系判断。
 // 详见 stores/family.js 里 isElderUser 的注释。
-const { isElderUser, unreadMessages } = storeToRefs(familyStore)
+const { isElderUser, unreadMessages, openEmergencies } = storeToRefs(familyStore)
+
+// 子女端强提醒：名下老人有未处理紧急事件时，「家人」角标升级为 SOS 样式
+const familyBadge = computed(() => (openEmergencies.value > 0 ? 'SOS' : unreadMessages.value))
+
+// 所有页面顶部的紧急横幅（子女端专用；随 60 秒未读轮询一起更新）
+const showEmergencyBanner = computed(() => openEmergencies.value > 0 && !isElderUser.value)
 
 /**
  * 未读留言轮询。
@@ -186,14 +193,16 @@ const mainList = computed(() => {
           path: '/elder/family',
           icon: Users,
           activeIcon: Users,
-          badge: unreadMessages.value
+          badge: familyBadge.value,
+          urgent: openEmergencies.value > 0
         }
       : {
           name: '家人',
           path: '/family',
           icon: Users,
           activeIcon: Users,
-          badge: unreadMessages.value
+          badge: familyBadge.value,
+          urgent: openEmergencies.value > 0
         },
     {
       name: '问 AI',
@@ -434,7 +443,11 @@ provide('settingsModal', {
             />
           </a-tooltip>
           <span class="nav-text">{{ item.name }}</span>
-          <span v-if="item.badge" class="nav-badge">{{ item.badge > 99 ? '99+' : item.badge }}</span>
+          <span
+            v-if="item.badge"
+            class="nav-badge"
+            :class="{ urgent: item.urgent }"
+          >{{ item.badge > 99 ? '99+' : item.badge }}</span>
         </RouterLink>
       </div>
       <div class="fill">
@@ -480,12 +493,22 @@ provide('settingsModal', {
         </div>
       </div>
     </div>
-    <router-view v-slot="{ Component, route }" id="app-router-view">
-      <keep-alive v-if="route.meta.keepAlive !== false">
-        <component :is="Component" />
-      </keep-alive>
-      <component :is="Component" v-else />
-    </router-view>
+    <div class="main-area">
+      <!-- 子女端紧急横幅：轮询周期内发现未处理紧急事件即显示，点进家人页看详情 -->
+      <div v-if="showEmergencyBanner" class="emergency-banner">
+        <Siren class="banner-icon" :size="18" />
+        <span>您照护的老人有 {{ openEmergencies }} 起未处理的紧急求助，请尽快联系确认</span>
+        <button type="button" class="banner-action" @click="router.push('/family')">
+          查看详情
+        </button>
+      </div>
+      <router-view v-slot="{ Component, route }" id="app-router-view">
+        <keep-alive v-if="route.meta.keepAlive !== false">
+          <component :is="Component" />
+        </keep-alive>
+        <component :is="Component" v-else />
+      </router-view>
+    </div>
 
     <ConversationSearchModal
       v-model:open="conversationSearchOpen"
@@ -542,6 +565,51 @@ provide('settingsModal', {
   (@sidebar-collapsed-content-width - @sidebar-icon-size) / 2
 );
 
+@keyframes nav-badge-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 77, 79, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 79, 0);
+  }
+}
+
+// 子女端紧急横幅：铺在内容区顶部，存在未处理事件时常驻
+.emergency-banner {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--color-error-500, #ff4d4f);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+
+  .banner-icon {
+    flex: 0 0 auto;
+  }
+
+  .banner-action {
+    padding: 3px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    border-radius: 6px;
+    background: transparent;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+  }
+}
+
 .app-layout {
   display: flex;
   flex-direction: row;
@@ -550,14 +618,25 @@ provide('settingsModal', {
   min-width: var(--min-width);
 }
 
-div.header,
-#app-router-view {
+div.header {
+  height: 100%;
+  max-width: 100%;
+}
+
+// 内容列：紧急横幅固定在顶部，router-view 占剩余空间并自己滚动
+.main-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 100%;
   max-width: 100%;
 }
 
 #app-router-view {
   flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
   overflow-y: auto;
 }
 
@@ -735,6 +814,13 @@ div.header,
       line-height: 18px;
       text-align: center;
       pointer-events: none;
+
+      // 紧急升级：名下老人有未处理事件时显示 SOS 并脉冲闪烁，与普通未读红点区分
+      &.urgent {
+        padding: 0 8px;
+        letter-spacing: 1px;
+        animation: nav-badge-pulse 1.6s ease-out infinite;
+      }
     }
 
     & > svg:focus {

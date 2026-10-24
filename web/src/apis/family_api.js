@@ -28,8 +28,17 @@ export const familyApi = {
   listMessages: (withUid, limit = 50) =>
     apiGet(`/api/family/messages?with_uid=${encodeURIComponent(withUid)}&limit=${limit}`),
 
-  /** 未读留言总数 */
-  unreadCount: () => apiGet('/api/family/messages/unread-count')
+  /** 未读留言总数 + 名下老人的未处理紧急数 */
+  unreadCount: () => apiGet('/api/family/messages/unread-count'),
+
+  /** 老人触发紧急求助（source: 'sos' | 'keyword'），10 分钟内重复触发后端去重 */
+  reportEmergency: (payload) => apiPost('/api/family/emergency', payload),
+
+  /** 老人标记「我没事了」，撤销 open 事件并给子女补发安抚留言 */
+  resolveEmergency: (eventId) => apiPost(`/api/family/emergency/${eventId}/resolve`),
+
+  /** 子女端：我绑定老人的紧急事件，未处理在前 */
+  listEmergencyEvents: (limit = 50) => apiGet(`/api/family/emergency/events?limit=${limit}`)
 }
 
 export default familyApi

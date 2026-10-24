@@ -14,6 +14,8 @@ import { familyApi } from '@/apis/family_api'
  */
 export const useFamilyStore = defineStore('family', () => {
   const unreadMessages = ref(0)
+  /** 名下绑定老人的未处理紧急事件数（子女端强提醒用） */
+  const openEmergencies = ref(0)
   /** 原始绑定数据：{ as_elder: [], as_child: [] } */
   const links = ref({ as_elder: [], as_child: [] })
   const linksLoaded = ref(false)
@@ -62,6 +64,7 @@ export const useFamilyStore = defineStore('family', () => {
     try {
       const data = await familyApi.unreadCount()
       unreadMessages.value = data.total || 0
+      openEmergencies.value = data.open_emergency_count || 0
     } catch (error) {
       // 角标失败不影响主流程，静默降级
       console.warn('获取未读留言数失败:', error)
@@ -71,12 +74,14 @@ export const useFamilyStore = defineStore('family', () => {
 
   function reset() {
     unreadMessages.value = 0
+    openEmergencies.value = 0
     links.value = { as_elder: [], as_child: [] }
     linksLoaded.value = false
   }
 
   return {
     unreadMessages,
+    openEmergencies,
     links,
     linksLoaded,
     loadingLinks,

@@ -6,12 +6,14 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yuxi.storage.postgres.models_family import FamilyLink, FamilyMessage
+from yuxi.storage.postgres.models_family import EmergencyEvent, FamilyLink, FamilyMessage
+from yuxi.utils.datetime_utils import utc_now_naive
 
 ACTIVE = "active"
 
@@ -135,3 +137,51 @@ class FamilyRepository:
             .group_by(FamilyMessage.from_uid)
         )
         return {from_uid: int(count) for from_uid, count in result.all()}
+
+    async def get_recent_open_event(self, db: AsyncSession, elder_uid: str, cooldown: timedelta) -> EmergencyEvent | None:
+        """冷却窗口内该老人最近一条未处理事件，存在则触发方应去重。"""
+        threshold = utc_now_naive() - cooldown
+        result = await db.execute(
+            select(EmergencyEvent)
+            .where(
+                EmergencyEvent.elder_uid == elder_uid,
+                EmergencyEvent.status == "open",
+                EmergencyEvent.created_at >= threshold,
+            )
+            .order_by(EmergencyEvent.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def create_event(self, db: AsyncSession, data: dict[str, Any]) -> EmergencyEvent:
+        event = EmergencyEvent(**data)
+        db.add(event)
+        await db.flush()
+        return event
+
+    async def get_event(self, db: AsyncSession, event_id: int) -> EmergencyEvent | None:
+        return await db.get(EmergencyEvent, event_id)
+
+    async def list_events_of_elders(self, db: AsyncSession, elder_uids: list[str], *, limit: int = 50) -> list[EmergencyEvent]:
+        """老人们的紧急事件，未处理在前、按时间倒序。"""
+        result = await db.execute(
+            select(EmergencyEvent)
+            .where(EmergencyEvent.elder_uid.in_(elder_uids))
+            .order_by(
+                case((EmergencyEvent.status == "open", 0), else_=1),
+                EmergencyEvent.created_at.desc(),
+            )
+            .limit(max(1, min(limit, 200)))
+        )
+        return list(result.scalars().all())
+
+    async def count_open_events_of_elders(self, db: AsyncSession, elder_uids: list[str]) -> int:
+        if not elder_uids:
+            return 0
+        result = await db.execute(
+            select(func.count(EmergencyEvent.id)).where(
+                EmergencyEvent.elder_uid.in_(elder_uids),
+                EmergencyEvent.status == "open",
+            )
+        )
+        return int(result.scalar() or 0)

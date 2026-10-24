@@ -40,6 +40,27 @@
     </a-empty>
 
     <template v-else>
+      <!-- 紧急求助事件：未处理在前，点击横幅进来第一眼能看到 -->
+      <a-alert
+        v-if="emergencyEvents.length"
+        class="emergency-events-alert"
+        type="error"
+        show-icon
+      >
+        <template #message>紧急求助：{{ openEmergencyCount }} 起未处理</template>
+        <template #description>
+          <div v-for="event in emergencyEvents" :key="event.id" class="emergency-row">
+            <a-tag :color="event.status === 'open' ? 'red' : 'green'">
+              {{ event.status === 'open' ? '未处理' : '已解除' }}
+            </a-tag>
+            <span class="emergency-elder">{{ event.elder_name || event.elder_uid }}</span>
+            <span>{{ event.source === 'sos' ? 'SOS 按钮' : '聊天提到' }} · {{ emergencyCategoryLabel(event.category) }}</span>
+            <span v-if="event.detail" class="emergency-quote">“{{ event.detail }}”</span>
+            <span class="emergency-time">{{ formatDateTime(event.created_at) }}</span>
+          </div>
+        </template>
+      </a-alert>
+
       <div class="elder-switch">
         <span class="switch-label">正在照护</span>
         <a-select
@@ -231,6 +252,7 @@ import { UserPlus } from 'lucide-vue-next'
 import { familyApi } from '@/apis/family_api'
 import { reminderApi } from '@/apis/reminder_api'
 import { FAMILY_UPDATED_EVENT, REMINDERS_UPDATED_EVENT } from '@/composables/useAssistantCommand'
+import { emergencyCategoryLabel } from '@/utils/emergencyDetector'
 import { useFamilyStore } from '@/stores/family'
 import { useUserStore } from '@/stores/user'
 import ReminderEditorModal from '@/components/family/ReminderEditorModal.vue'
@@ -268,6 +290,12 @@ const loadingElders = ref(false)
 const currentElderUid = ref('')
 const activeTab = ref('status')
 const errorMessage = ref('')
+
+// 老人侧触发的紧急求助事件（所有绑定老人，未处理在前）
+const emergencyEvents = ref([])
+const openEmergencyCount = computed(
+  () => emergencyEvents.value.filter((event) => event.status === 'open').length
+)
 
 const todayItems = ref([])
 const loadingToday = ref(false)
@@ -343,6 +371,15 @@ async function loadElders() {
     errorMessage.value = error.message || '加载老人列表失败'
   } finally {
     loadingElders.value = false
+  }
+}
+
+async function loadEmergencyEvents({ silent = false } = {}) {
+  try {
+    const data = await familyApi.listEmergencyEvents()
+    emergencyEvents.value = data.events || []
+  } catch (error) {
+    if (!silent) errorMessage.value = error.message || '加载紧急事件失败'
   }
 }
 
@@ -548,6 +585,7 @@ let statusPollTimer = null
  */
 function refreshActiveTabSilently() {
   if (document.hidden) return
+  loadEmergencyEvents({ silent: true })
   if (activeTab.value === 'status') {
     loadToday({ silent: true })
     loadStats({ silent: true })
@@ -575,6 +613,7 @@ onMounted(async () => {
   await loadElders()
   await loadToday()
   await loadStats()
+  loadEmergencyEvents()
   startStatusPolling()
   document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener(REMINDERS_UPDATED_EVENT, handleAssistantDataChanged)
@@ -645,6 +684,34 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   margin-bottom: 8px;
+}
+
+/* 紧急事件列表：点横幅进来后看清楚是谁、什么情况、什么时候 */
+.emergency-events-alert {
+  margin-bottom: 16px;
+}
+
+.emergency-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.emergency-elder {
+  font-weight: 600;
+}
+
+.emergency-quote {
+  color: var(--gray-600, #646a73);
+}
+
+.emergency-time {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--gray-500, #8f959e);
 }
 
 .switch-label {

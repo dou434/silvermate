@@ -72,4 +72,13 @@ export function generateEmergencyMarkdown(emergency) {
   ].join('\n')
 }
 
-export default { detectEmergency, generateEmergencyMarkdown }
+/**
+ * 分类编码转中文标签（子女端的紧急事件列表用）
+ * @param {string} type - 分类编码，如 cardiac / general
+ */
+export function emergencyCategoryLabel(type) {
+  if (type === 'general') return '紧急求助'
+  return EMERGENCY_PATTERNS[type]?.label || type
+}
+
+export default { detectEmergency, generateEmergencyMarkdown, emergencyCategoryLabel }

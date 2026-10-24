@@ -28,10 +28,19 @@ async def _load_user(db: AsyncSession, uid: str) -> User:
     return user
 
 
-def link_to_dict(link: FamilyLink, *, elder_name: str | None = None, child_name: str | None = None) -> dict:
+def link_to_dict(
+    link: FamilyLink,
+    *,
+    elder_name: str | None = None,
+    child_name: str | None = None,
+    elder_phone: str | None = None,
+    child_phone: str | None = None,
+) -> dict:
     payload = link.to_dict()
     payload["elder_name"] = elder_name
     payload["child_name"] = child_name
+    payload["elder_phone"] = elder_phone
+    payload["child_phone"] = child_phone
     return payload
 
 
@@ -107,20 +116,29 @@ async def list_links(db: AsyncSession, current_user: User) -> dict:
     child_side = [link for link in links if link.child_uid == current_user.uid]
 
     uids = {link.elder_uid for link in child_side} | {link.child_uid for link in elder_side}
-    names = await _load_user_names(db, uids)
+    profiles = await _load_user_profiles(db, uids)
     # 每位家人各有多少句没读：老人端据此默认打开有未读的那一位
     unread_by_sender = await repository.count_unread_by_sender(db, current_user.uid)
 
     return {
         "as_elder": [
             {
-                **link_to_dict(link, child_name=names.get(link.child_uid)),
+                **link_to_dict(
+                    link,
+                    child_name=profiles[link.child_uid]["name"],
+                    child_phone=profiles[link.child_uid]["phone"],
+                ),
                 "unread_count": unread_by_sender.get(link.child_uid, 0),
             }
             for link in elder_side
         ],
         "as_child": [
-            link_to_dict(link, elder_name=names.get(link.elder_uid)) for link in child_side
+            link_to_dict(
+                link,
+                elder_name=profiles[link.elder_uid]["name"],
+                elder_phone=profiles[link.elder_uid]["phone"],
+            )
+            for link in child_side
         ],
     }
 
@@ -128,15 +146,23 @@ async def list_links(db: AsyncSession, current_user: User) -> dict:
 async def list_elders(db: AsyncSession, current_user: User) -> list[dict]:
     """子女端：我已经绑定的老人（只含 active）。"""
     links = await repository.list_elders_of_child(db, current_user.uid)
-    names = await _load_user_names(db, {link.elder_uid for link in links})
-    return [link_to_dict(link, elder_name=names.get(link.elder_uid)) for link in links]
+    profiles = await _load_user_profiles(db, {link.elder_uid for link in links})
+    return [
+        link_to_dict(
+            link,
+            elder_name=profiles[link.elder_uid]["name"],
+            elder_phone=profiles[link.elder_uid]["phone"],
+        )
+        for link in links
+    ]
 
 
-async def _load_user_names(db: AsyncSession, uids: set[str]) -> dict[str, str]:
+async def _load_user_profiles(db: AsyncSession, uids: set[str]) -> dict[str, dict[str, str | None]]:
+    """uid → {name, phone}，用于给绑定列表补充对方的称呼与联系电话（SOS 弹窗拨打用）。"""
     if not uids:
         return {}
-    result = await db.execute(select(User.uid, User.username).where(User.uid.in_(uids)))
-    return {uid: username for uid, username in result.all()}
+    result = await db.execute(select(User.uid, User.username, User.phone_number).where(User.uid.in_(uids)))
+    return {uid: {"name": username, "phone": phone_number} for uid, username, phone_number in result.all()}
 
 
 async def _is_linked(db: AsyncSession, uid_a: str, uid_b: str) -> bool:
@@ -186,5 +212,10 @@ async def list_messages(db: AsyncSession, current_user: User, *, with_uid: str, 
 
 
 async def unread_summary(db: AsyncSession, current_user: User) -> dict:
-    """未读留言总数，用于老人端与子女端的角标。"""
-    return {"total": await repository.count_unread(db, current_user.uid)}
+    """未读留言总数 + 名下绑定老人的未处理紧急数，用于老人端与子女端的角标。"""
+    elder_uids = await repository.list_active_elder_uids_of_child(db, current_user.uid)
+    open_emergency = await repository.count_open_events_of_elders(db, elder_uids)
+    return {
+        "total": await repository.count_unread(db, current_user.uid),
+        "open_emergency_count": open_emergency,
+    }
