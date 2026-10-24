@@ -732,6 +732,7 @@ const commandExamples = computed(() => {
 
   const examples = []
   if (name) examples.push(`给${name}发消息：我今天挺好的`)
+  examples.push('提醒我明天早上八点吃药')
   examples.push('提醒都做完了')
   examples.push('打开我的提醒')
   return examples

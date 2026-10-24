@@ -17,20 +17,23 @@
 
     {
         "handled": bool,          # False 表示不是指令，交还给智能体对话
-        "intent": str | None,     # family_message / reminder_done / reminder_confirm / navigate
+        "intent": str | None,     # family_message / reminder_create / reminder_change /
+                                  # reminder_stop / reminder_done / reminder_confirm / navigate
         "reply": str,             # 直接展示给用户的助手回复
         "actions": list[dict],    # 界面动作：{"type": "refresh"|"navigate"|"notify", ...}
         "needs_input": bool,      # True 表示缺参数（例如没说发什么），reply 是追问
-    }
+    },
 """
 
 from __future__ import annotations
 
 import re
+from datetime import datetime, time, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.services import family_service, reminder_service
 from yuxi.storage.postgres.models_business import User
+from yuxi.utils.datetime_utils import SHANGHAI_TZ
 
 # 这些状态表示"时间已到、老人还没定性"，可以继续标记完成或确认。
 REMINDER_SETTLED_STATUSES = {"delivered", "confirmed", "missed"}
@@ -78,6 +81,53 @@ _PAGE_LABELS = {
     "问ai": "问 AI",
     "对话": "问 AI",
 }
+
+# === 提醒管理（建/改/停）的中文时间解析 ====================================
+# 只认约定好的口语形态：日期(今天/今晚/明天/明早/明晚/后天) × 时段(凌晨..晚上)
+# × 时刻(八点/8点/三点半/3:30/14点/X点Y分) × 重复(每天/每周几)。
+# 解析不出"确定"的时刻就返回 None，由调用方追问或放行——错时间对用药提醒是安全事故。
+
+_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+_CN_DIGIT_CHARS = "零一二两三四五六七八九十"
+
+# 这些日期/重复说法本任务不支持。硬套规则会得到错误时刻（如"大后天"被当成
+# "后天"、"每周一"丢掉"每"变成今天），宁可整句放行追问，也不猜。
+_UNSUPPORTED_SCHEDULE = re.compile(
+    r"(大后天|下周|下月|下个|每月|每隔|隔.{0,2}天|工作日"
+    r"|\d\s*月|\d\s*[号日]|月\s*\d|(?<!每)(?:周|星期)[一二三四五六日天])"
+)
+
+_TIME_CHUNK = re.compile(
+    r"(?P<date>后天|明天|明早|明晚|今天|今晚)?\s*"
+    r"(?P<period>凌晨|早上|早晨|上午|中午|下午|傍晚|晚上)?\s*"
+    r"(?:(?:(?P<hour>\d{1,2}|[零一二两三四五六七八九十]{1,3})\s*[点时]\s*"
+    r"(?P<minute>半|(?P<minnum>\d{1,2}|[零一二两三四五六七八九十]{1,3})\s*分)?)"
+    r"|(?:(?P<dhour>\d{1,2})\s*[:：]\s*(?P<dmin>\d{1,2})))"
+)
+
+_WEEKDAY_TO_ISO = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 7, "天": 7}
+_DATE_OFFSETS = {"后天": 2, "明天": 1, "明早": 1, "明晚": 1, "今天": 0, "今晚": 0}
+_WEEKDAY_LABELS = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
+
+# 创建指令句首锚定（可选礼貌词 + 可选重复词 + 可选时间前缀 + "提醒我"），
+# 中间只放行"时间表达字符"（今明后/时段/数字/点半分等），
+# 让"医生提醒我要按时吃药"这类第三方陈述天然不命中
+_REMINDER_CREATE_PATTERN = re.compile(
+    r"^(?:帮我|请|麻烦)?\s*(?:给我)?\s*"
+    r"(?:每天|每日|每(?:周|星期)[一二三四五六日天])?\s*"
+    r"[今明后天凌晨早晚夜间上下午傍晨时分半点中:：\d零一二两三四五六七八九十\s]{0,16}?"
+    r"提醒我\s*(?P<rest>.+)$"
+)
+_REMINDER_CHANGE_PATTERN = re.compile(r"(改到|改成|改为|调整到|调整成|调整为|调整)")
+_REMINDER_STOP_PATTERN = re.compile(r"(别再?提醒|不用提醒|不要了|不用了|停掉|停了|取消|删掉|删除)")
+
+# 建改停三个 intent 抽关键词用的虚词表：在通用表基础上补充动作词、时段与重复词
+_KEYWORD_MGMT_NOISE = re.compile(
+    r"(帮我|帮忙|请|麻烦|把|将|给|的|提醒|标记|记录|记成|记为|改成|改到|改为|调整|设置|为|成|完成|做完|做了|"
+    r"已经|都|全部|所有|今天|今日|明天|后天|明早|明晚|今晚|凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|"
+    r"每天|每日|每星期|每周|星期|周|一下|这|那|条|个|件|事情|先|也|和|我|了|吧|呢|啊|哦|们|"
+    r"别再|别|不要|不用|停掉|停了|停|取消|删掉|删除)"
+)
 
 
 def _result(
@@ -128,6 +178,107 @@ def _match_score(keyword: str, title: str) -> float:
     if not overlap:
         return 0.0
     return len(overlap) / len(set(keyword))
+
+
+def _chinese_number(text: str) -> int | None:
+    """中文数字转整数。只覆盖小时会用到的 0-23，超界或写法不认识返回 None。"""
+    if text == "十":
+        return 10
+    if text == "二十":
+        return 20
+    if len(text) == 3 and text.startswith("二十") and text[2] in _CN_DIGITS:
+        return 20 + _CN_DIGITS[text[2]]
+    if len(text) == 2 and text.startswith("十") and text[1] in _CN_DIGITS:
+        return 10 + _CN_DIGITS[text[1]]
+    if len(text) == 1 and text in _CN_DIGITS:
+        return _CN_DIGITS[text]
+    return None
+
+
+def parse_when(text: str) -> tuple[datetime, dict] | None:
+    """从中文口语句里解析提醒时刻与重复规则。
+
+    Returns:
+        (上海本地时间的 aware 时刻, repeat_rule)；解析不出确定时刻返回 None，
+        由调用方追问或放行，绝不猜一个近似时间。
+    """
+    text = (text or "").strip()
+    if not text or _UNSUPPORTED_SCHEDULE.search(text):
+        return None
+
+    rule: dict = {"type": "none"}
+    if re.search(r"(每天|每日)", text):
+        rule = {"type": "daily"}
+    else:
+        weekday = re.search(r"每(?:周|星期)([一二三四五六日天])", text)
+        if weekday:
+            rule = {"type": "weekly", "weekdays": [_WEEKDAY_TO_ISO[weekday.group(1)]]}
+
+    match = _TIME_CHUNK.search(text)
+    if not match:
+        return None
+
+    # "三点二十"这类没带"分"的分钟不猜：紧跟着数字却没解析出分钟，整句放弃
+    tail = text[match.end() :]
+    if tail and (tail[0] in _CN_DIGIT_CHARS or tail[0].isdigit()):
+        return None
+
+    if match.group("dhour") is not None:
+        hour = int(match.group("dhour"))
+        minute = int(match.group("dmin"))
+    else:
+        hour_raw = match.group("hour") or ""
+        hour = int(hour_raw) if hour_raw.isdigit() else _chinese_number(hour_raw)
+        minute_raw = match.group("minute")
+        if minute_raw is None:
+            minute = 0
+        elif minute_raw == "半":
+            minute = 30
+        else:
+            digits = minute_raw.rstrip("分")
+            minute = int(digits) if digits.isdigit() else _chinese_number(digits)
+    if hour is None or hour > 23 or minute > 59:
+        return None
+
+    period = match.group("period") or ""
+    date_word = match.group("date") or ""
+    offset = _DATE_OFFSETS.get(date_word, 0)
+
+    if period == "晚上" or date_word in {"今晚", "明晚"}:
+        # 晚上十二点是午夜零点，落到第二天；晚上八点补成 20 点
+        if hour == 12:
+            hour, offset = 0, offset + 1
+        elif hour < 12:
+            hour += 12
+    elif period in {"下午", "傍晚", "中午"} and hour < 12:
+        # 中午一点 = 13 点；中午/下午十二点保持 12 点
+        hour += 12
+    elif period == "凌晨" and hour == 12:
+        hour = 0
+
+    day = reminder_service.shanghai_now().date() + timedelta(days=offset)
+    return datetime.combine(day, time(hour, minute), tzinfo=SHANGHAI_TZ), rule
+
+
+def _strip_schedule(text: str) -> str:
+    """去掉时间表达与指令虚词，剩下的就是提醒事项（或要定位的提醒关键词）。"""
+    cleaned = _TIME_CHUNK.sub("", text or "")
+    cleaned = _KEYWORD_MGMT_NOISE.sub("", cleaned)
+    return re.sub(r"[\s，,。.！!？?：:；;、]", "", cleaned)
+
+
+def _format_when(local: datetime, rule: dict) -> str:
+    """给老人看的时刻描述：明天 08:00 / 每天 21:00 / 每周一 08:00。"""
+    clock = local.strftime("%H:%M")
+    kind = rule.get("type")
+    if kind == "daily":
+        return f"每天 {clock}"
+    if kind == "weekly":
+        days = "、".join(f"周{_WEEKDAY_LABELS.get(day, day)}" for day in rule.get("weekdays") or [])
+        return f"每{days} {clock}"
+    diff = (local.date() - reminder_service.shanghai_now().date()).days
+    label = {0: "今天", 1: "明天", 2: "后天"}.get(diff) or local.strftime("%m月%d日")
+    return f"{label} {clock}"
 
 
 async def _load_contacts(db: AsyncSession, current_user: User) -> list[dict]:
@@ -268,20 +419,234 @@ async def _handle_family_message(
 
 
 def _resolve_reminder_targets(items: list[dict], keyword: str) -> tuple[list[dict], str]:
-    """把"吃药"这类关键词映射到今天的具体提醒记录。"""
+    """把"吃药"这类关键词映射到具体的提醒记录。"""
     if not keyword:
         return [], "no_keyword"
 
     scored = [(_match_score(keyword, item.get("title") or ""), item) for item in items]
-    scored = [(score, item) for score, item in scored if score >= 0.5]
-    if not scored:
+    # 连续子串（满分）优先：关键词同时是"吃药"的子串、又与"吃降压药"字符重合时
+    # 只认子串命中的，不然明明有精确匹配却打平成多候选、反问老人
+    exact = [pair for pair in scored if pair[0] == 1.0]
+    pool = exact or [pair for pair in scored if pair[0] >= 0.5]
+    if not pool:
         return [], "no_match"
 
-    best = max(score for score, _ in scored)
-    top = [item for score, item in scored if score == best]
+    best = max(score for score, _ in pool)
+    top = [item for score, item in pool if score == best]
     if len(top) > 1:
         return top, "ambiguous"
     return top, "matched"
+
+
+def _resolve_management_targets(items: list[dict], keyword: str) -> tuple[list[dict], str]:
+    """建/改/停里定位目标提醒。没说哪一条时只有唯一候选才直接用，否则追问。"""
+    if not items:
+        return [], "no_match"
+    if not keyword:
+        return (items, "matched") if len(items) == 1 else (items, "ambiguous")
+    return _resolve_reminder_targets(items, keyword)
+
+
+async def _transfer_to_owner(
+    db: AsyncSession, current_user: User, item: dict, raw: str, *, intent: str, verb: str
+) -> dict:
+    """老人想动子女建的提醒：不放宽权限，留言转达给设置人并告知老人已转达。"""
+    owner_name = item.get("owner_name") or "家人"
+    title = item.get("title") or "提醒"
+    try:
+        await family_service.send_message(
+            db,
+            current_user,
+            to_uid=item["owner_uid"],
+            content=f"{current_user.username}想{verb}提醒「{title}」：{raw}。请到家人页确认处理。",
+        )
+    except Exception as error:  # noqa: BLE001 - 统一转成老人能看懂的提示
+        detail = getattr(error, "detail", None) or str(error)
+        return _result(handled=True, intent=intent, reply=f"没能联系上{owner_name}：{detail}")
+
+    return _result(
+        handled=True,
+        intent=intent,
+        reply=f"「{title}」是{owner_name}设置的，我动不了；我已经留言请他帮您{verb}了，等他看到就好。",
+        actions=[
+            {"type": "notify", "level": "success", "message": f"已留言请{owner_name}{verb}「{title}」"},
+            {"type": "refresh", "target": "family"},
+        ],
+    )
+
+
+async def _handle_reminder_create(
+    db: AsyncSession, current_user: User, raw: str, rest: str
+) -> dict:
+    """「提醒我明天早上八点吃药」：给自己建提醒。缺时间或缺事项时追问，不猜。"""
+    parsed = parse_when(raw)
+    title = _strip_schedule(rest)
+
+    if parsed is None:
+        prefix = f"「{title}」" if title else ""
+        return _result(
+            handled=True,
+            intent="reminder_create",
+            reply=f"{prefix}几点提醒您？您可以说：提醒我明天早上八点吃药。",
+            needs_input=True,
+        )
+
+    when, rule = parsed
+    if not title:
+        return _result(
+            handled=True,
+            intent="reminder_create",
+            reply="要提醒您做什么事？您可以说：提醒我明天早上八点吃药。",
+            needs_input=True,
+        )
+
+    try:
+        await reminder_service.create_reminder(
+            db,
+            current_user,
+            target_uid=current_user.uid,
+            title=title,
+            content=None,
+            category="other",
+            remind_at=when,
+            repeat_rule=rule,
+        )
+    except Exception as error:  # noqa: BLE001 - 统一转成老人能看懂的提示
+        detail = getattr(error, "detail", None) or str(error)
+        return _result(handled=True, intent="reminder_create", reply=f"没能设好提醒：{detail}")
+
+    return _result(
+        handled=True,
+        intent="reminder_create",
+        reply=f"「{title}」的提醒已设好：{_format_when(when, rule)}，到点我会提醒您。",
+        actions=[
+            {"type": "notify", "level": "success", "message": f"已设好「{title}」的提醒"},
+            {"type": "refresh", "target": "reminders"},
+        ],
+    )
+
+
+async def _handle_reminder_change(db: AsyncSession, current_user: User, raw: str) -> dict:
+    """「把吃药提醒改到下午三点」：自己建的直接改；子女建的转达给设置人。"""
+    keyword = _strip_schedule(raw)
+    payload = await reminder_service.list_reminders(db, current_user)
+    items = [item for item in payload["reminders"] if item.get("enabled")]
+
+    if not items:
+        return _result(
+            handled=True,
+            intent="reminder_change",
+            reply="您现在没有提醒。先说一句「提醒我明天早上八点吃药」就能建一条。",
+        )
+
+    targets, status = _resolve_management_targets(items, keyword)
+    if status == "ambiguous":
+        names = "、".join(item.get("title") or "提醒" for item in targets)
+        return _result(
+            handled=True,
+            intent="reminder_change",
+            reply=f"有 {len(targets)} 条都对得上：{names}。您说的是哪一条？",
+            needs_input=True,
+        )
+    if status == "no_match":
+        return _result(
+            handled=True,
+            intent="reminder_change",
+            reply=f"没有找到「{keyword}」的提醒，可以打开「我的提醒」看看现在有哪些。",
+        )
+
+    parsed = parse_when(raw)
+    title = targets[0].get("title") or "提醒"
+    if parsed is None:
+        return _result(
+            handled=True,
+            intent="reminder_change",
+            reply=f"「{title}」要改到几点？您可以说：把{title}提醒改到明天下午三点。",
+            needs_input=True,
+        )
+    when, rule = parsed
+
+    if not targets[0].get("is_mine"):
+        return await _transfer_to_owner(db, current_user, targets[0], raw, intent="reminder_change", verb="调整")
+
+    try:
+        await reminder_service.update_reminder(
+            db,
+            current_user,
+            targets[0]["id"],
+            remind_at=when,
+            # 只在明确说了"每天/每周几"时才动重复规则，否则保留原规则
+            repeat_rule=rule if rule.get("type") != "none" else None,
+        )
+    except Exception as error:  # noqa: BLE001 - 统一转成老人能看懂的提示
+        detail = getattr(error, "detail", None) or str(error)
+        return _result(handled=True, intent="reminder_change", reply=f"没能改过来：{detail}")
+
+    when_text = _format_when(when, rule)
+    return _result(
+        handled=True,
+        intent="reminder_change",
+        reply=f"「{title}」已经改到{when_text}了。",
+        actions=[
+            {"type": "notify", "level": "success", "message": f"「{title}」已改到{when_text}"},
+            {"type": "refresh", "target": "reminders"},
+        ],
+    )
+
+
+async def _handle_reminder_stop(db: AsyncSession, current_user: User, raw: str) -> dict:
+    """「吃药提醒不要了」「别再提醒我吃药」：自己的停用；子女建的转达。"""
+    keyword = _strip_schedule(raw)
+    payload = await reminder_service.list_reminders(db, current_user)
+    if not payload["reminders"]:
+        return _result(handled=True, intent="reminder_stop", reply="您现在没有提醒。")
+
+    enabled = [item for item in payload["reminders"] if item.get("enabled")]
+    targets, status = _resolve_management_targets(enabled, keyword)
+
+    if status == "no_match":
+        # 可能早就停过了：明确说出现在的状态，免得老人以为没生效
+        disabled = [item for item in payload["reminders"] if not item.get("enabled")]
+        stopped, stopped_status = _resolve_management_targets(disabled, keyword)
+        if stopped_status == "matched":
+            return _result(
+                handled=True,
+                intent="reminder_stop",
+                reply=f"「{stopped[0].get('title') or '提醒'}」的提醒之前就已经停了，不会再提醒您。",
+            )
+        return _result(handled=True, intent="reminder_stop", reply=f"没有找到「{keyword}」的提醒。")
+
+    if status == "ambiguous":
+        names = "、".join(item.get("title") or "提醒" for item in targets)
+        return _result(
+            handled=True,
+            intent="reminder_stop",
+            reply=f"有 {len(targets)} 条都对得上：{names}。您说的是哪一条？",
+            needs_input=True,
+        )
+
+    target = targets[0]
+    title = target.get("title") or "提醒"
+
+    if not target.get("is_mine"):
+        return await _transfer_to_owner(db, current_user, target, raw, intent="reminder_stop", verb="停用")
+
+    try:
+        # 停用优先于删除：数据保留，想恢复时还能找回来
+        await reminder_service.update_reminder(db, current_user, target["id"], enabled=False)
+    except Exception as error:  # noqa: BLE001 - 统一转成老人能看懂的提示
+        detail = getattr(error, "detail", None) or str(error)
+        return _result(handled=True, intent="reminder_stop", reply=f"没能停掉：{detail}")
+
+    return _result(
+        handled=True,
+        intent="reminder_stop",
+        reply=f"「{title}」的提醒已经停了，不会再提醒您。",
+        actions=[
+            {"type": "notify", "level": "success", "message": f"已停用「{title}」"},
+            {"type": "refresh", "target": "reminders"},
+        ],
+    )
 
 
 async def _handle_reminder_action(
@@ -449,6 +814,19 @@ async def handle(
             return await _handle_family_message(
                 db, current_user, name=name, content=content
             )
+
+    # 提醒管理（建/改/停）：排在发留言之后、完成/确认之前——
+    # "给小李发消息说提醒改到三点"仍应识别成发消息；
+    # 否定优先："别再提醒我吃药"先判停用，再考虑创建。
+    if _REMINDER_STOP_PATTERN.search(raw) and "提醒" in raw:
+        return await _handle_reminder_stop(db, current_user, raw)
+
+    if _REMINDER_CHANGE_PATTERN.search(raw) and "提醒" in raw:
+        return await _handle_reminder_change(db, current_user, raw)
+
+    create_match = _REMINDER_CREATE_PATTERN.match(raw)
+    if create_match:
+        return await _handle_reminder_create(db, current_user, raw, create_match.group("rest"))
 
     if _DONE_PATTERN.search(raw):
         return await _handle_reminder_action(db, current_user, raw, want="done")
