@@ -234,6 +234,11 @@ class FamilyMessage(Base):
     content = Column(Text, nullable=False, comment="留言内容")
     read_at = Column(DateTime, nullable=True, comment="已读时间，空表示未读")
     created_at = Column(DateTime, default=utc_now_naive, index=True)
+    meta = Column(
+        JSON,
+        nullable=True,
+        comment="结构化元数据：老人的提醒转达请求（kind/reminder_id/title/requested_at/text），处理后追加 resolved_at",
+    )
 
     __table_args__ = (Index("ix_family_messages_to_read", "to_uid", "read_at", "created_at"),)
 
@@ -245,4 +250,5 @@ class FamilyMessage(Base):
             "content": self.content,
             "read_at": format_utc_datetime(self.read_at),
             "created_at": format_utc_datetime(self.created_at),
+            "meta": self.meta,
         }

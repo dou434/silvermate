@@ -795,6 +795,7 @@ class PostgresManager(metaclass=SingletonMeta):
             "CREATE INDEX IF NOT EXISTS ix_family_messages_to_uid ON family_messages(to_uid)",
             "CREATE INDEX IF NOT EXISTS ix_family_messages_created_at ON family_messages(created_at)",
             ("CREATE INDEX IF NOT EXISTS ix_family_messages_to_read ON family_messages(to_uid, read_at, created_at)"),
+            "ALTER TABLE IF EXISTS family_messages ADD COLUMN IF NOT EXISTS meta JSONB",
             # endregion
         ]
         async with self.async_engine.begin() as conn:

@@ -1,9 +1,10 @@
 """问 AI 界面「自然语言控制」的解析与执行测试。
 
-重点锁三件事：
+重点锁四件事：
 1. 只有明确的指令才动手，提问和日常闲聊必须原样交还给智能体（绝不误写数据）；
 2. 发留言的内容要切干净（"告诉小李我今天血压130"不能把名字吃掉一个字）；
-3. 只有本人能标记自己的提醒，和 reminder_service 的口径保持一致。
+3. 只有本人能标记自己的提醒，和 reminder_service 的口径保持一致；
+4. 子女建的提醒老人只能转达：转达留言带 meta，子女一键处理形成双向闭环。
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from yuxi.services import assistant_command_service, family_service, reminder_service
@@ -592,3 +594,238 @@ async def test_third_party_mentions_fall_through_to_agent(ctx, text):
     # 放行的同时一条数据都不能多
     reminders = await reminder_service.list_reminders(db, elder)
     assert [r["id"] for r in reminders["reminders"]] == [created["id"]]
+
+
+# ==================== 转达闭环（子女端一键处理） ====================
+
+
+async def _last_child_message(ctx):
+    """子女收件箱里最新一条留言。"""
+    db, elder, child, _ = ctx
+    inbox = await family_service.list_messages(db, child, with_uid="elder_1")
+    return inbox["messages"][-1]
+
+
+async def test_transfer_message_carries_change_meta(ctx):
+    """改时间的转达留言带完整 meta，正文口径不变（老客户端仍可读）。"""
+    db, elder, child, _ = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+
+    result = await assistant_command_service.handle(db, elder, "把吃降压药提醒改到明天下午三点")
+
+    assert result["intent"] == "reminder_change"
+    last = await _last_child_message(ctx)
+    assert "调整" in last["content"]
+    assert "把吃降压药提醒改到明天下午三点" in last["content"]
+    meta = last["meta"]
+    assert meta["kind"] == "reminder_change"
+    assert meta["reminder_id"] == created["id"]
+    assert meta["title"] == "吃降压药"
+    assert meta["text"] == "把吃降压药提醒改到明天下午三点"
+    # 上海 2025-01-16 15:00 = UTC 07:00
+    assert meta["requested_at"] == "2025-01-16T07:00:00+00:00"
+
+
+async def test_transfer_message_carries_stop_meta(ctx):
+    """停用的转达留言 meta 不带 requested_at。"""
+    db, elder, child, _ = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+
+    result = await assistant_command_service.handle(db, elder, "别再提醒我吃降压药")
+
+    assert result["intent"] == "reminder_stop"
+    meta = (await _last_child_message(ctx))["meta"]
+    assert meta["kind"] == "reminder_stop"
+    assert meta["reminder_id"] == created["id"]
+    assert "requested_at" not in meta
+
+
+async def test_resolve_approve_change_updates_time_and_notifies_elder(ctx):
+    """同意修改：执行的是老人原话里的时刻，并给老人补发子女署名的回执。"""
+    db, elder, child, _ = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+    await assistant_command_service.handle(db, elder, "把吃降压药提醒改到明天下午三点")
+
+    transfer = await _last_child_message(ctx)
+    resolved = await family_service.resolve_request(db, child, transfer["id"], action="approve")
+
+    reminders = await reminder_service.list_reminders(db, child)
+    item = next(r for r in reminders["reminders"] if r["id"] == created["id"])
+    assert item["remind_at"] == "2025-01-16T07:00:00Z"
+    assert resolved["meta"]["resolved_at"]
+
+    elder_inbox = await family_service.list_messages(db, elder, with_uid="child_1")
+    receipt = elder_inbox["messages"][-1]
+    assert receipt["content"] == "小李已把「吃降压药」改到 01-16 15:00。"
+    assert receipt["meta"] is None
+
+
+async def test_resolve_approve_change_clears_stale_same_day_occurrence(ctx):
+    """改到当天另一个时刻时，旧时刻的待触发记录要被清掉，不留"幽灵待办"。"""
+    db, elder, child, _ = ctx
+    created = await reminder_service.create_reminder(
+        db,
+        child,
+        target_uid="elder_1",
+        title="吃降压药",
+        content=None,
+        category="用药",
+        remind_at=_FROZEN_NOW + timedelta(hours=11),  # 今晚 21:00
+    )
+    await reminder_service.list_today(db, elder)  # 展开 21:00 的待触发记录
+    await assistant_command_service.handle(db, elder, "把吃降压药提醒改到今天下午三点")
+
+    transfer = await _last_child_message(ctx)
+    await family_service.resolve_request(db, child, transfer["id"], action="approve")
+
+    today = await reminder_service.list_today(db, elder)
+    slots = {
+        item["scheduled_at"]
+        for item in today["items"]
+        if item["reminder_id"] == created["id"]
+    }
+    assert slots == {"2025-01-15T07:00:00Z"}  # 只剩上海 15:00 这一条
+
+
+async def test_resolve_approve_stop_disables_and_notifies_elder(ctx):
+    db, elder, child, _ = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+    await assistant_command_service.handle(db, elder, "别再提醒我吃降压药")
+
+    transfer = await _last_child_message(ctx)
+    resolved = await family_service.resolve_request(db, child, transfer["id"], action="approve")
+
+    reminders = await reminder_service.list_reminders(db, child)
+    item = next(r for r in reminders["reminders"] if r["id"] == created["id"])
+    assert item["enabled"] is False
+    assert resolved["meta"]["resolved_at"]
+
+    elder_inbox = await family_service.list_messages(db, elder, with_uid="child_1")
+    assert elder_inbox["messages"][-1]["content"] == "小李已停用「吃降压药」提醒。"
+
+
+async def test_resolve_dismiss_marks_without_touching_data(ctx):
+    """「先不动」只标记已处理：提醒不变、老人侧不收到任何留言。"""
+    db, elder, child, _ = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+    await assistant_command_service.handle(db, elder, "别再提醒我吃降压药")
+
+    transfer = await _last_child_message(ctx)
+    resolved = await family_service.resolve_request(db, child, transfer["id"], action="dismiss")
+
+    reminders = await reminder_service.list_reminders(db, child)
+    item = next(r for r in reminders["reminders"] if r["id"] == created["id"])
+    assert item["enabled"] is True
+    assert item["remind_at"] == created["remind_at"]
+    assert resolved["meta"]["resolved_at"]
+
+    # 「先不动」不给老人发回执：线程里除了老人自己的转达留言外没有别的
+    elder_inbox = await family_service.list_messages(db, elder, with_uid="child_1")
+    assert [m["from_uid"] for m in elder_inbox["messages"]] == ["elder_1"]
+
+
+async def test_resolve_rejects_non_recipient(ctx):
+    """老人（发送人）和无关第三人都不能处理转达请求。"""
+    db, elder, child, stranger = ctx
+    await _make_delivered_reminder(db, child, elder)
+    await assistant_command_service.handle(db, elder, "别再提醒我吃降压药")
+    transfer = await _last_child_message(ctx)
+
+    for caller in (elder, stranger):
+        with pytest.raises(HTTPException) as exc_info:
+            await family_service.resolve_request(db, caller, transfer["id"], action="approve")
+        assert exc_info.value.status_code == 403
+
+
+async def test_resolve_rejects_recipient_who_is_not_owner(ctx):
+    """收件人不是提醒设置人（异常构造的数据）：执行仍被 assert_can_manage 拦下。"""
+    db, elder, child, stranger = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+    forged = await family_service.repository.create_message(
+        db,
+        {
+            "from_uid": "elder_1",
+            "to_uid": "stranger_1",
+            "content": "构造的转达",
+            "meta": {"kind": "reminder_stop", "reminder_id": created["id"], "title": "吃降压药", "text": "x"},
+        },
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await family_service.resolve_request(db, stranger, forged.id, action="approve")
+    assert exc_info.value.status_code == 403
+
+
+async def test_resolve_fails_when_reminder_deleted(ctx):
+    """提醒已被删除：明确报错，meta 不置位，子女可自行处理。"""
+    db, elder, child, _ = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+    await assistant_command_service.handle(db, elder, "别再提醒我吃降压药")
+    transfer = await _last_child_message(ctx)
+
+    await reminder_service.delete_reminder(db, child, created["id"])
+    with pytest.raises(HTTPException) as exc_info:
+        await family_service.resolve_request(db, child, transfer["id"], action="approve")
+
+    assert exc_info.value.status_code == 404
+    assert "不在" in exc_info.value.detail
+    assert (await _last_child_message(ctx))["meta"].get("resolved_at") is None
+
+
+async def test_resolve_change_on_disabled_reminder_conflicts(ctx):
+    db, elder, child, _ = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+    await assistant_command_service.handle(db, elder, "把吃降压药提醒改到明天下午三点")
+    transfer = await _last_child_message(ctx)
+    await reminder_service.update_reminder(db, child, created["id"], enabled=False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await family_service.resolve_request(db, child, transfer["id"], action="approve")
+
+    assert exc_info.value.status_code == 409
+    assert (await _last_child_message(ctx))["meta"].get("resolved_at") is None
+
+
+async def test_resolve_change_to_past_time_reports_error(ctx):
+    """老人说的时间在处理时已过：沿用 update_reminder 的校验报错，meta 不置位。"""
+    db, elder, child, _ = ctx
+    await _make_delivered_reminder(db, child, elder)
+    await assistant_command_service.handle(db, elder, "把吃降压药提醒改到今天凌晨两点")
+    transfer = await _last_child_message(ctx)
+    assert transfer["meta"]["requested_at"] == "2025-01-14T18:00:00+00:00"  # 上海凌晨两点
+
+    with pytest.raises(HTTPException) as exc_info:
+        await family_service.resolve_request(db, child, transfer["id"], action="approve")
+
+    assert exc_info.value.status_code == 400
+    assert "已过" in exc_info.value.detail
+    assert (await _last_child_message(ctx))["meta"].get("resolved_at") is None
+
+
+async def test_resolve_is_idempotent_after_resolved(ctx):
+    """已处理的转达重复请求：返回成功但不再执行、不再补发留言。"""
+    db, elder, child, _ = ctx
+    created, _ = await _make_delivered_reminder(db, child, elder)
+    await assistant_command_service.handle(db, elder, "别再提醒我吃降压药")
+    transfer = await _last_child_message(ctx)
+
+    first = await family_service.resolve_request(db, child, transfer["id"], action="approve")
+    second = await family_service.resolve_request(db, child, transfer["id"], action="approve")
+
+    assert second["meta"]["resolved_at"] == first["meta"]["resolved_at"]
+    elder_inbox = await family_service.list_messages(db, elder, with_uid="child_1")
+    receipts = [m for m in elder_inbox["messages"] if "已停用" in m["content"]]
+    assert len(receipts) == 1
+
+
+async def test_resolve_rejects_plain_message_without_meta(ctx):
+    """老留言（无 meta）调用该端点：明确报错，行为不变。"""
+    db, elder, child, _ = ctx
+    await family_service.send_message(db, elder, to_uid="child_1", content="普通留言")
+    plain = await _last_child_message(ctx)
+    assert plain["meta"] is None
+
+    with pytest.raises(HTTPException) as exc_info:
+        await family_service.resolve_request(db, child, plain["id"], action="approve")
+
+    assert exc_info.value.status_code == 400

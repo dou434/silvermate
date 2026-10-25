@@ -184,6 +184,30 @@
                 :class="{ 'is-mine': msg.from_uid === userStore.uid }"
               >
                 <div class="message-bubble">{{ msg.content }}</div>
+                <!-- 提醒转达请求：只给收件人（子女）渲染动作按钮，一键执行不跳页 -->
+                <div v-if="isPendingRequest(msg)" class="request-actions">
+                  <span v-if="msg.meta.kind === 'reminder_change' && msg.meta.requested_at" class="request-hint">
+                    改到 {{ formatRequestedAt(msg) }}
+                  </span>
+                  <a-button
+                    v-if="msg.meta.kind === 'reminder_change'"
+                    type="primary"
+                    size="small"
+                    :loading="resolvingId === msg.id"
+                    @click="handleResolveRequest(msg, 'approve')"
+                  >同意修改</a-button>
+                  <a-button
+                    v-else
+                    danger
+                    size="small"
+                    :loading="resolvingId === msg.id"
+                    @click="handleResolveRequest(msg, 'approve')"
+                  >同意停用</a-button>
+                  <a-button size="small" :disabled="resolvingId === msg.id" @click="handleResolveRequest(msg, 'dismiss')">
+                    {{ msg.meta.kind === 'reminder_change' ? '先不动' : '保留' }}
+                  </a-button>
+                </div>
+                <div v-else-if="isResolvedRequest(msg)" class="request-resolved">已处理</div>
                 <div class="message-time">{{ formatDateTime(msg.created_at) }}</div>
               </div>
             </div>
@@ -571,6 +595,45 @@ async function handleSendMessage() {
     message.error(error.message || '发送失败')
   } finally {
     sendingMessage.value = false
+  }
+}
+
+// ===== 提醒转达请求的一键处理 =====
+
+const resolvingId = ref(null)
+
+/** 未处理的转达请求：有 meta、未 resolved，且当前用户是收件人才给动作按钮 */
+function isPendingRequest(msg) {
+  const meta = msg.meta
+  if (!meta || meta.resolved_at) return false
+  return (
+    msg.to_uid === userStore.uid && (meta.kind === 'reminder_change' || meta.kind === 'reminder_stop')
+  )
+}
+
+/** 已处理的转达请求：发送人（老人）与收件人都标「已处理」，不再出现按钮 */
+function isResolvedRequest(msg) {
+  const meta = msg.meta
+  return !!meta?.resolved_at && (meta.kind === 'reminder_change' || meta.kind === 'reminder_stop')
+}
+
+function formatRequestedAt(msg) {
+  return msg.meta?.requested_at ? dayjs(msg.meta.requested_at).format('MM-DD HH:mm') : ''
+}
+
+async function handleResolveRequest(msg, action) {
+  resolvingId.value = msg.id
+  try {
+    await familyApi.resolveMessageRequest(msg.id, action)
+    const successText =
+      action === 'dismiss' ? '已保留' : msg.meta.kind === 'reminder_change' ? '已修改提醒时间' : '已停用提醒'
+    message.success(successText)
+    // 静默刷新保持滚动位置；按钮变「已处理」由刷新回来的 meta.resolved_at 驱动
+    await loadMessages({ silent: true })
+  } catch (error) {
+    message.error(error.message || '处理失败')
+  } finally {
+    resolvingId.value = null
   }
 }
 
@@ -979,6 +1042,30 @@ onUnmounted(() => {
 }
 
 .message-time {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--gray-400, #a8adb5);
+}
+
+/* 转达请求动作区：贴在留言气泡下方，一键执行不跳页 */
+.request-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--gray-100, #f0f1f3);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.request-hint {
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--gray-600, #646a73);
+}
+
+.request-resolved {
   margin-top: 4px;
   font-size: 12px;
   color: var(--gray-400, #a8adb5);

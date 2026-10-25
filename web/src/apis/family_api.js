@@ -31,6 +31,10 @@ export const familyApi = {
   /** 未读留言总数 + 名下老人的未处理紧急数 */
   unreadCount: () => apiGet('/api/family/messages/unread-count'),
 
+  /** 处理老人发来的提醒转达请求（action: 'approve' 同意执行 / 'dismiss' 先不动） */
+  resolveMessageRequest: (messageId, action) =>
+    apiPost(`/api/family/messages/${messageId}/resolve-request`, { action }),
+
   /** 老人触发紧急求助（source: 'sos' | 'keyword'），10 分钟内重复触发后端去重 */
   reportEmergency: (payload) => apiPost('/api/family/emergency', payload),
 

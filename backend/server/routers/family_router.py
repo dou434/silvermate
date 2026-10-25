@@ -21,6 +21,10 @@ class MessageCreateRequest(BaseModel):
     content: str = Field(description="留言内容")
 
 
+class MessageResolveRequest(BaseModel):
+    action: str = Field(description="approve=同意执行老人的诉求；dismiss=先不动/保留，仅标记已处理")
+
+
 class EmergencyReportRequest(BaseModel):
     source: str = Field(description="触发来源：sos 或 keyword")
     category: str | None = Field(default=None, max_length=32, description="急症类型，如 cardiac/stroke，sos 时可省略")
@@ -105,6 +109,17 @@ async def unread_message_count(
 ):
     """未读留言总数与名下老人的未处理紧急数。"""
     return await family_service.unread_summary(db, current_user)
+
+
+@family.post("/messages/{message_id}/resolve-request")
+async def resolve_message_request(
+    message_id: int,
+    data: MessageResolveRequest,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """处理老人发来的提醒转达请求：改时间/停用一键执行并给老人补发回执。"""
+    return await family_service.resolve_request(db, current_user, message_id, action=data.action)
 
 
 @family.post("/emergency", status_code=status.HTTP_201_CREATED)

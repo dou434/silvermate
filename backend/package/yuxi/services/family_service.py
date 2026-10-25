@@ -7,17 +7,23 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.repositories.family_repository import FamilyRepository
+from yuxi.services import reminder_service
 from yuxi.storage.postgres.models_business import User
-from yuxi.storage.postgres.models_family import FamilyLink
-from yuxi.utils.datetime_utils import utc_now_naive
+from yuxi.storage.postgres.models_family import FamilyLink, FamilyMessage
+from yuxi.utils.datetime_utils import ensure_shanghai, utc_isoformat, utc_now_naive
 
 repository = FamilyRepository()
 
 MAX_MESSAGE_LENGTH = 500
+
+# 转达请求的处理动作：approve=同意执行；dismiss=先不动/保留，仅标记已处理
+RESOLVE_REQUEST_ACTIONS = ("approve", "dismiss")
 
 
 async def _load_user(db: AsyncSession, uid: str) -> User:
@@ -170,8 +176,14 @@ async def _is_linked(db: AsyncSession, uid_a: str, uid_b: str) -> bool:
     return await repository.is_active_child(db, uid_b, uid_a) or await repository.is_active_child(db, uid_a, uid_b)
 
 
-async def send_message(db: AsyncSession, current_user: User, *, to_uid: str, content: str) -> dict:
-    """发送关怀留言。双方必须存在 active 绑定。"""
+async def send_message(
+    db: AsyncSession, current_user: User, *, to_uid: str, content: str, meta: dict | None = None
+) -> dict:
+    """发送关怀留言。双方必须存在 active 绑定。
+
+    ``meta`` 仅供服务端写入结构化元数据（如提醒转达请求），不对公开接口开放，
+    客户端无法伪造。
+    """
     to_uid = to_uid.strip()
     content = content.strip()
     if to_uid == current_user.uid:
@@ -190,7 +202,7 @@ async def send_message(db: AsyncSession, current_user: User, *, to_uid: str, con
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="尚未与该用户建立家庭绑定")
 
     message = await repository.create_message(
-        db, {"from_uid": current_user.uid, "to_uid": to_uid, "content": content}
+        db, {"from_uid": current_user.uid, "to_uid": to_uid, "content": content, "meta": meta}
     )
     return message.to_dict()
 
@@ -209,6 +221,72 @@ async def list_messages(db: AsyncSession, current_user: User, *, with_uid: str, 
         "messages": [message.to_dict() for message in messages],
         "marked_read": read_count,
     }
+
+
+def _mark_request_resolved(message: FamilyMessage) -> None:
+    """meta 追加 resolved_at。整体重新赋值，确保 JSON 列的变更被 ORM 检测到。"""
+    meta = dict(message.meta or {})
+    meta["resolved_at"] = utc_isoformat()
+    message.meta = meta
+
+
+async def resolve_request(db: AsyncSession, current_user: User, message_id: int, *, action: str) -> dict:
+    """处理老人发来的提醒转达请求（子女端留言卡片一键执行）。
+
+    ``action="approve"`` 按老人诉求执行（改时间或停用）并以子女名义给老人补发回执；
+    ``"dismiss"`` 仅标记已处理，不动数据、不发回执。执行仍走
+    ``reminder_service.assert_can_manage``——只有提醒设置人（也是转达收件人）本人能确认。
+    提醒已被删除/停用、目标时间已过时返回明确错误，meta 不置位，子女可改用手动方式。
+    """
+    if action not in RESOLVE_REQUEST_ACTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="action 只能是 approve 或 dismiss"
+        )
+
+    message = await db.get(FamilyMessage, message_id)
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="留言不存在")
+    if message.to_uid != current_user.uid:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有收件人可以处理转达请求")
+
+    meta = message.meta or {}
+    if meta.get("kind") not in ("reminder_change", "reminder_stop"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="这条留言不是提醒转达请求")
+    if meta.get("resolved_at"):
+        # 幂等：已处理过的请求直接返回现状，不再执行、不再补发留言
+        return message.to_dict()
+
+    if action == "dismiss":
+        _mark_request_resolved(message)
+        await db.flush()
+        return message.to_dict()
+
+    reminder = await reminder_service.repository.get(db, meta.get("reminder_id"))
+    if reminder is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="这条提醒已经不在了，请到提醒管理里确认"
+        )
+    reminder_service.assert_can_manage(current_user, reminder)
+    if meta["kind"] == "reminder_change" and not reminder.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="这条提醒已停用，请先到提醒管理里启用"
+        )
+
+    title = meta.get("title") or "提醒"
+    if meta["kind"] == "reminder_change":
+        requested_at = datetime.fromisoformat(meta["requested_at"])
+        await reminder_service.update_reminder(db, current_user, reminder.id, remind_at=requested_at)
+        clock = ensure_shanghai(requested_at).strftime("%m-%d %H:%M")
+        receipt = f"{current_user.username}已把「{title}」改到 {clock}。"
+    else:
+        await reminder_service.update_reminder(db, current_user, reminder.id, enabled=False)
+        receipt = f"{current_user.username}已停用「{title}」提醒。"
+
+    # 回执以子女名义发给老人（家人在说话，不是系统广播）；发送失败则整个事务回滚
+    await send_message(db, current_user, to_uid=message.from_uid, content=receipt)
+    _mark_request_resolved(message)
+    await db.flush()
+    return message.to_dict()
 
 
 async def unread_summary(db: AsyncSession, current_user: User) -> dict:

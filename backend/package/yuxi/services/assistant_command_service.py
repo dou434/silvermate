@@ -33,7 +33,7 @@ from datetime import datetime, time, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.services import family_service, reminder_service
 from yuxi.storage.postgres.models_business import User
-from yuxi.utils.datetime_utils import SHANGHAI_TZ
+from yuxi.utils.datetime_utils import SHANGHAI_TZ, ensure_utc
 
 # 这些状态表示"时间已到、老人还没定性"，可以继续标记完成或确认。
 REMINDER_SETTLED_STATUSES = {"delivered", "confirmed", "missed"}
@@ -448,17 +448,38 @@ def _resolve_management_targets(items: list[dict], keyword: str) -> tuple[list[d
 
 
 async def _transfer_to_owner(
-    db: AsyncSession, current_user: User, item: dict, raw: str, *, intent: str, verb: str
+    db: AsyncSession,
+    current_user: User,
+    item: dict,
+    raw: str,
+    *,
+    intent: str,
+    verb: str,
+    requested_at: datetime | None = None,
 ) -> dict:
-    """老人想动子女建的提醒：不放宽权限，留言转达给设置人并告知老人已转达。"""
+    """老人想动子女建的提醒：不放宽权限，留言转达给设置人并告知老人已转达。
+
+    留言附带 meta（kind/reminder_id/title/requested_at/text），子女端据此在留言卡片上
+    渲染一键处理按钮，由设置人确认后走 resolve_request 执行；正文保持纯文本，
+    老客户端仍可读。``requested_at`` 是已解析的目标时刻（仅改时间有），存 UTC ISO。
+    """
     owner_name = item.get("owner_name") or "家人"
     title = item.get("title") or "提醒"
+    meta: dict = {
+        "kind": intent,
+        "reminder_id": item["id"],
+        "title": title,
+        "text": raw,
+    }
+    if requested_at is not None:
+        meta["requested_at"] = ensure_utc(requested_at).isoformat()
     try:
         await family_service.send_message(
             db,
             current_user,
             to_uid=item["owner_uid"],
             content=f"{current_user.username}想{verb}提醒「{title}」：{raw}。请到家人页确认处理。",
+            meta=meta,
         )
     except Exception as error:  # noqa: BLE001 - 统一转成老人能看懂的提示
         detail = getattr(error, "detail", None) or str(error)
@@ -567,7 +588,9 @@ async def _handle_reminder_change(db: AsyncSession, current_user: User, raw: str
     when, rule = parsed
 
     if not targets[0].get("is_mine"):
-        return await _transfer_to_owner(db, current_user, targets[0], raw, intent="reminder_change", verb="调整")
+        return await _transfer_to_owner(
+            db, current_user, targets[0], raw, intent="reminder_change", verb="调整", requested_at=when
+        )
 
     try:
         await reminder_service.update_reminder(
