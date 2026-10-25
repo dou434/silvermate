@@ -98,6 +98,31 @@ docker compose exec api uv run --no-sync --no-dev python scripts/rotate_admin_pa
 
 ---
 
+## 三A、快速演示（5 分钟全故事）
+
+容器起来后跑三个 seed（前两个在全新环境执行一次即可，`seed-demo` 幂等可重复执行）：
+
+```powershell
+cd D:\SilverMate
+make seed        # 部门与管理员账号（.env 的 5 个 YUXI_SUPER_ADMIN_* / YUXI_DEFAULT_USER_PASSWORD 变量）
+make seed-kb     # 养老知识库（可选，需已配置 Embedding 模型）
+make seed-demo   # 演示数据（.env 里需设置 YUXI_DEMO_PASSWORD）
+```
+
+然后用演示账号登录 **http://127.0.0.1:5173**：
+
+| 账号 | 显示名 | 看什么 |
+|---|---|---|
+| `demo_elder` | 王秀兰 | 「我的提醒」当天多条提醒；「我的家人」有 1 条未读留言 |
+| `demo_child` | 王小明 | 「家人」页：今日状态、近 7 天依从率（约八成完成的真实值）、留言往来、1 条**已解除**的 SOS 事件（无红色横幅） |
+
+两账号共用 `YUXI_DEMO_PASSWORD` 配置的密码。演示数据含过去 6 天执行记录（17 完成 / 2 漏服）、
+晨间遛弯是老人自建的提醒；数据随时间变陈旧时执行 `make seed-demo RESET=1` 一键重建到当前时刻。
+
+> 演示账号仅供演示环境使用，请勿复用真实密码、勿用于真实环境。
+
+---
+
 ## 四、几个必须知道的约定
 
 ### 1. MinIO 用的是 Bitnami 遗产镜像，不是官方镜像
@@ -160,6 +185,8 @@ docker compose up -d
 docker compose exec api uv run python scripts/seed_initial_users.py
 # （可选，需先在界面配置 Embedding 模型）挂载养老知识库：
 # docker compose exec api uv run python scripts/seed_knowledge_base.py
+# （可选）创建演示数据，见「三A、快速演示」：
+# docker compose exec api uv run python scripts/seed_demo.py
 ```
 
 **注意**：删 `docker/volumes` 会清空数据库、MinIO 文件、Milvus 向量数据，不可恢复。

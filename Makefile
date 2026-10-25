@@ -1,5 +1,5 @@
 
-.PHONY: up up-lite down logs lint format test test-unit test-integration test-e2e seed seed-kb reset
+.PHONY: up up-lite down logs lint format test test-unit test-integration test-e2e seed seed-kb seed-demo reset
 
 PYTEST_ARGS ?=
 BACKEND_PYTHON ?= $(shell cat backend/.python-version)
@@ -44,6 +44,10 @@ seed:
 
 seed-kb:
 	docker compose exec api uv run python scripts/seed_knowledge_base.py
+
+# 演示数据（幂等；RESET=1 时清掉演示数据重建到当前时刻）
+seed-demo:
+	docker compose exec api uv run python scripts/seed_demo.py $(if $(RESET),--reset)
 
 ######################
 # LINTING AND FORMATTING
