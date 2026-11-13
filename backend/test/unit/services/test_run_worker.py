@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
+import asyncpg
 import pytest
 import yuxi.services.run_worker as run_worker
 
@@ -464,3 +465,32 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         "init_builtin_skills",
         "start_runtime_sync",
     ]
+
+
+@pytest.mark.asyncio
+async def test_startup_waits_for_postgres_recovery(monkeypatch: pytest.MonkeyPatch):
+    attempts: list[int] = []
+
+    async def flaky_create_business_tables():
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise asyncpg.CannotConnectNowError("the database system is starting up")
+
+    monkeypatch.setattr(run_worker.pg_manager, "create_business_tables", flaky_create_business_tables)
+    monkeypatch.setattr(run_worker, "STARTUP_DB_RETRY_SECONDS", 0)
+
+    await run_worker._wait_for_business_db()
+
+    assert len(attempts) == 3
+
+
+@pytest.mark.asyncio
+async def test_startup_fails_fast_on_non_recovery_error(monkeypatch: pytest.MonkeyPatch):
+    async def broken_create_business_tables():
+        raise RuntimeError("bad dsn")
+
+    monkeypatch.setattr(run_worker.pg_manager, "create_business_tables", broken_create_business_tables)
+    monkeypatch.setattr(run_worker, "STARTUP_DB_RETRY_SECONDS", 0)
+
+    with pytest.raises(RuntimeError, match="bad dsn"):
+        await run_worker._wait_for_business_db()

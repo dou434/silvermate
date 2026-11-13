@@ -126,8 +126,16 @@ services:
       - .env
     environment:
       <<: *api-worker-env
-    command: watchfiles --filter python "arq server.worker_main.WorkerSettings" /app/server /app/package
+    # supervisor 负责 arq 退出自动拉起与源码热重载；watchfiles 直接包 arq 时，
+    # arq 退出后容器仍是 Up（任务堆积，表现为「问 AI 没回应」）。
+    command: python scripts/worker_supervisor.py
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "scripts/worker_health.py"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 180s
     depends_on:
       postgres:
         condition: service_healthy

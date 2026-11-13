@@ -7,6 +7,7 @@ import json
 import time
 from dataclasses import dataclass, field
 
+import asyncpg
 from arq import cron
 from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
@@ -33,6 +34,14 @@ LOADING_FLUSH_INTERVAL_MS = 100
 LOADING_FLUSH_MAX_CHARS = 512
 RUN_CANCEL_POLL_SECONDS = 0.2
 SUPPORTED_RUN_TYPES = {"chat", "resume", "subagent"}
+
+# Docker 守护进程重启时，restart: unless-stopped 的容器会被同时拉起，compose 的
+# depends_on 不再生效；此时 PostgreSQL 往往还在崩溃恢复，连接直接报 "the database
+# system is starting up"。worker 在这里退出后 watchfiles 不会重新拉起 arq 进程
+# （容器仍然是 Up），所有对话任务都留在队列里，前端表现就是"问 AI 一直没有回应"。
+# 只在启动阶段等待数据库真正可连，超时仍按原样失败，不掩盖配置错误。
+STARTUP_DB_WAIT_SECONDS = 180
+STARTUP_DB_RETRY_SECONDS = 2
 
 
 class RetryableRunError(Exception):
@@ -591,10 +600,28 @@ async def scan_due_reminders(ctx) -> dict:
     return {**synced, **advanced}
 
 
+async def _wait_for_business_db() -> None:
+    """等 PostgreSQL 从启动/恢复中缓过来，再建业务表；业务运行期不做重试。"""
+    deadline = time.monotonic() + STARTUP_DB_WAIT_SECONDS
+    while True:
+        try:
+            await pg_manager.create_business_tables()
+            return
+        except (asyncpg.CannotConnectNowError, OSError) as error:
+            if time.monotonic() >= deadline:
+                raise
+            logger.warning(
+                "PostgreSQL 尚未就绪，{} 秒后重试 worker 启动：{}",
+                STARTUP_DB_RETRY_SECONDS,
+                error,
+            )
+            await asyncio.sleep(STARTUP_DB_RETRY_SECONDS)
+
+
 async def _worker_startup(ctx):
     del ctx
     pg_manager.initialize()
-    await pg_manager.create_business_tables()
+    await _wait_for_business_db()
     await pg_manager.ensure_business_schema()
     await ensure_builtin_mcp_servers_in_db()
     async with pg_manager.get_async_session_context() as session:
@@ -616,6 +643,9 @@ class WorkerSettings:
     retry_jobs = True
     job_timeout = 3600
     keep_result = 60
+    # 供 scripts/worker_health.py 做容器健康检查：心跳键 61 秒过期，
+    # 默认 1 小时太长，worker 卡死时会长时间显示健康。
+    health_check_interval = 60
     on_startup = _worker_startup
     on_shutdown = _worker_shutdown
     try:
