@@ -50,6 +50,11 @@ _SEND_PATTERN = re.compile(
     r"(?P<content>.*)$"
 )
 
+# "给我发…"里的"给我"是收信人，不是指令。这类句子几乎都是在问对方发来了什么
+# （"小明给我发了什么消息"），而家庭留言本来也不允许发给自己
+# （family_service.send_message 会拒绝），所以命中后一律交还智能体。
+_SELF_TARGETS = {"我", "我自己", "自己", "本人", "我的"}
+
 # "告诉小李明天来吃饭" 这种不带"发消息"字样的，只定位动词，人名和内容交给联系人表切分
 # （用正则切分会被"小李小李"这类名字带偏，见 _split_name_and_content）
 _TELL_PATTERN = re.compile(r"(?:帮(?:我)?|请|麻烦)?\s*(?:告诉|通知|转告)\s*(?P<rest>.+)$")
@@ -824,7 +829,7 @@ async def handle(
 
     # 顺序有讲究：先说"给小李发消息说提醒做完了"，应当识别成发消息而不是完成提醒
     match = _SEND_PATTERN.search(raw)
-    if match and match.group("name"):
+    if match and match.group("name") and match.group("name") not in _SELF_TARGETS:
         return await _handle_family_message(
             db, current_user, name=match.group("name"), content=match.group("content") or ""
         )

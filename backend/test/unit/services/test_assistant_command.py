@@ -96,6 +96,10 @@ async def _make_delivered_reminder(db, child, elder, title="吃降压药"):
         "小李给我发消息了吗？",
         "今天天气不错",
         "",
+        # "给我"是收信人不是指令：问对方发来了什么，必须交给智能体查家庭数据
+        "小李给我发了什么消息",
+        "家里人给我发了什么消息",
+        "跟我说说今天天气",
     ],
 )
 async def test_plain_text_falls_through_to_agent(ctx, text):
