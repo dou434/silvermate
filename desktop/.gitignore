@@ -1,0 +1,7 @@
+node_modules/
+app/
+out/
+cache/
+.userdata*/
+run_out.txt
+run_err.txtdebug.log

@@ -1,0 +1,22 @@
+{
+  "name": "silvermate-desktop",
+  "productName": "SilverMate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "银发智伴 · 智慧养老 AI 助手 桌面版（离线演示）",
+  "main": "main.js",
+  "scripts": {
+    "demo:build": "pnpm --dir ../web exec vite build --mode demo --base=/ --outDir ../desktop/app --emptyOutDir",
+    "start": "electron .",
+    "pack": "electron-packager . SilverMate --platform=win32 --arch=x64 --out=out --overwrite --icon=build/icon.ico"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^45.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
+  }
+}
