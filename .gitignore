@@ -89,3 +89,11 @@ docs/vibe
 /models
 
 .taskr/
+
+### 本地隧道与演示辅助（含 OpenFrp/cpolar 凭据与本机绝对路径，不入库）
+/tools/
+
+### 本地记忆库与桌面端调试输出
+/.memsearch/
+desktop/*.txt
+desktop/.ud-of/
