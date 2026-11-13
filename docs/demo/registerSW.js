@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/silver-guardian-v2/demo/sw.js', { scope: '/silver-guardian-v2/demo/' })})}

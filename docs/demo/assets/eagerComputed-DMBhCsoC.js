@@ -1,0 +1,1 @@
+import{Q as e,dt as t}from"./_plugin-vue_export-helper-BQgqhVXH.js";function n(n){let r=t();return e(()=>{r.value=n()},{flush:`sync`}),r}export{n as t};
