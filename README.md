@@ -7,6 +7,8 @@
 [![Version](https://img.shields.io/badge/Version-0.7.1.beta1-purple.svg)](docs/develop-guides/changelog.md)
 
 > 面向养老场景的 AI 对话与知识库问答系统，融合 RAG 技术与知识图谱，针对老年用户进行适老化改造。
+>
+> 本项目基于开源平台 [Yuxi](https://github.com/xerrors/Yuxi) 二次开发。
 
 ## 项目概述
 
