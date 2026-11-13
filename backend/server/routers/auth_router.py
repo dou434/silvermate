@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 from yuxi.utils import logger
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status, UploadFile, File
@@ -60,6 +61,7 @@ class Token(BaseModel):
     phone_number: str | None = None
     avatar: str | None = None
     role: str
+    identity: str | None = None  # 身份: elder=长辈, child=子女
     department_id: int | None = None
     department_name: str | None = None
 
@@ -69,12 +71,14 @@ class RegisterRequest(BaseModel):
 
     只接受 uid / 密码 / 可选显示名与手机号；角色固定为普通用户，
     不接受客户端传入 role 或 department_id，避免提权。
+    身份（长辈/子女）只影响注册后的落地页面，不涉及任何权限。
     """
 
     uid: str = Field(min_length=3, max_length=20, description="登录标识，字母数字下划线")
     password: str = Field(min_length=6, max_length=64, description="登录密码，至少 6 位")
     username: str | None = Field(default=None, max_length=20, description="显示名称，缺省时与 uid 相同")
     phone_number: str | None = Field(default=None, description="可选手机号，用于登录与找回")
+    identity: Literal["elder", "child"] = Field(default="elder", description="身份：elder=长辈，child=子女")
 
 
 class UserCreate(BaseModel):
@@ -106,6 +110,7 @@ class UserResponse(BaseModel):
     phone_number: str | None = None
     avatar: str | None = None
     role: str
+    identity: str | None = None  # 身份: elder=长辈, child=子女
     department_id: int | None = None
     department_name: str | None = None  # 部门名称
     created_at: str
@@ -304,6 +309,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         "phone_number": user.phone_number,
         "avatar": user.avatar,
         "role": user.role,
+        "identity": user.identity,
         "department_id": user.department_id,
         "department_name": department_name,
     }
@@ -351,6 +357,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
             "phone_number": phone_number,
             "password_hash": AuthUtils.hash_password(data.password),
             "role": "user",
+            "identity": data.identity,
             "department_id": None,
             "last_login": utc_now_naive(),
         }
@@ -368,6 +375,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
         "phone_number": user.phone_number,
         "avatar": user.avatar,
         "role": user.role,
+        "identity": user.identity,
         "department_id": user.department_id,
         "department_name": None,
     }

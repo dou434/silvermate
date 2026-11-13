@@ -16,6 +16,14 @@
         </header>
 
         <a-form :model="form" layout="vertical" @finish="handleSubmit">
+          <a-form-item label="我的身份" name="identity">
+            <a-radio-group v-model:value="form.identity" class="identity-group" button-style="solid">
+              <a-radio-button value="elder">我是长辈</a-radio-button>
+              <a-radio-button value="child">我是子女</a-radio-button>
+            </a-radio-group>
+            <p class="identity-hint">{{ identityHint }}</p>
+          </a-form-item>
+
           <a-form-item
             label="登录账号"
             name="uid"
@@ -126,11 +134,18 @@ const brandLogo = computed(() => infoStore.organization?.logo || '')
 
 const form = reactive({
   uid: '',
+  identity: 'elder',
   username: '',
   password: '',
   confirmPassword: '',
   phoneNumber: ''
 })
+
+const identityHint = computed(() =>
+  form.identity === 'child'
+    ? '注册后进入家人关怀页面，可以查看长辈的提醒、留言与紧急求助。'
+    : '注册后进入长辈主页，大字大声、一句话就能用。'
+)
 
 const loading = ref(false)
 const errorMessage = ref('')
@@ -159,12 +174,13 @@ async function handleSubmit() {
     await userStore.register({
       uid: form.uid.trim(),
       password: form.password,
+      identity: form.identity,
       username: form.username.trim() || undefined,
       phone_number: form.phoneNumber.trim() || undefined
     })
 
     message.success('注册成功')
-    router.push('/elder')
+    router.push(form.identity === 'child' ? '/family' : '/elder')
   } catch (error) {
     errorMessage.value = error.message || '注册失败，请稍后重试'
   } finally {
@@ -237,6 +253,26 @@ async function handleSubmit() {
 .card-subtitle {
   margin: 0;
   font-size: 15px;
+  color: var(--gray-600, #646a73);
+}
+
+.identity-group {
+  display: flex;
+  width: 100%;
+}
+
+.identity-group :deep(.ant-radio-button-wrapper) {
+  flex: 1;
+  height: 48px;
+  line-height: 46px;
+  text-align: center;
+  font-size: 17px;
+}
+
+.identity-hint {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--gray-600, #646a73);
 }
 

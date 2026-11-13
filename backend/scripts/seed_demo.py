@@ -3,7 +3,7 @@
 跑完 `seed_initial_users`（部门账号）与 `seed_knowledge_base`（知识库）后执行本脚本，
 新环境即得完整可演示的养老故事，全程不改任何产品代码：
 
-- 老人「王秀兰」（demo_elder）+ 子女「王小明」（demo_child），绑定 active；
+- 老人「王秀兰」（elder）+ 子女「王小明」（young），绑定 active；
 - 5 条提醒：吃降压药 / 量血压 / 每周二复诊 / 喝水（子女建）+ 晨间遛弯（老人自建，
   展示语音自建能力）；
 - 过去 6 天执行记录按固定剧本铺 done / missed（约八成完成），依从率呈现真实感；
@@ -37,9 +37,9 @@ for import_path in (APP_ROOT, APP_ROOT / "package"):
 from yuxi.services.reminder_service import MISSED_GRACE_MINUTES, to_naive_utc  # noqa: E402
 from yuxi.utils.datetime_utils import SHANGHAI_TZ  # noqa: E402
 
-ELDER_UID = "demo_elder"
+ELDER_UID = "elder"
 ELDER_NAME = "王秀兰"
-CHILD_UID = "demo_child"
+CHILD_UID = "young"
 CHILD_NAME = "王小明"
 RELATION = "子女"
 DEMO_PASSWORD_ENV = "YUXI_DEMO_PASSWORD"
@@ -402,6 +402,7 @@ async def write_demo_data(session, spec: DemoSpec, password: str) -> None:
                 username=spec["elder_name"],
                 password_hash=password_hash,
                 role="user",
+                identity="elder",
                 last_login=now,
             ),
             User(
@@ -409,6 +410,7 @@ async def write_demo_data(session, spec: DemoSpec, password: str) -> None:
                 username=spec["child_name"],
                 password_hash=password_hash,
                 role="user",
+                identity="child",
                 last_login=now,
             ),
             FamilyLink(

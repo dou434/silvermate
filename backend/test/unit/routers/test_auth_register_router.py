@@ -148,3 +148,34 @@ async def test_register_ignores_role_supplied_by_client(db_session, monkeypatch)
 
     assert created["role"] == "user"
     assert result["role"] == "user"
+
+
+async def test_register_defaults_identity_to_elder(db_session, monkeypatch):
+    """不传身份时按长辈处理，兼容既有调用方。"""
+    repo, created = _make_fake_repo()
+    monkeypatch.setattr(auth_router, "UserRepository", lambda: repo)
+
+    result = await register(RegisterRequest(uid="elder_05", password="secret123"), db=db_session)
+
+    assert created["identity"] == "elder"
+    assert result["identity"] == "elder"
+
+
+async def test_register_persists_child_identity(db_session, monkeypatch):
+    """选择子女身份时落库并原样返回。"""
+    repo, created = _make_fake_repo()
+    monkeypatch.setattr(auth_router, "UserRepository", lambda: repo)
+
+    result = await register(
+        RegisterRequest(uid="child_03", password="secret123", identity="child"),
+        db=db_session,
+    )
+
+    assert created["identity"] == "child"
+    assert result["identity"] == "child"
+
+
+async def test_register_request_rejects_unknown_identity():
+    """身份只允许 elder / child，其它取值直接 422。"""
+    with pytest.raises(ValidationError):
+        RegisterRequest(uid="elder_06", password="secret123", identity="admin")

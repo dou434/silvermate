@@ -11,6 +11,7 @@ export const useUserStore = defineStore('user', () => {
   const phoneNumber = ref('')
   const avatar = ref('')
   const userRole = ref('')
+  const identity = ref('')
   const departmentId = ref(null)
   const departmentName = ref('')
 
@@ -56,6 +57,7 @@ export const useUserStore = defineStore('user', () => {
       phoneNumber.value = data.phone_number || ''
       avatar.value = data.avatar || ''
       userRole.value = data.role
+      identity.value = data.identity || ''
       departmentId.value = data.department_id || null
       departmentName.value = data.department_name || ''
 
@@ -104,6 +106,7 @@ export const useUserStore = defineStore('user', () => {
       phoneNumber.value = data.phone_number || ''
       avatar.value = data.avatar || ''
       userRole.value = data.role
+      identity.value = data.identity || ''
       departmentId.value = data.department_id || null
       departmentName.value = data.department_name || ''
 
@@ -161,6 +164,7 @@ export const useUserStore = defineStore('user', () => {
       phoneNumber.value = data.phone_number || ''
       avatar.value = data.avatar || ''
       userRole.value = data.role
+      identity.value = data.identity || ''
       departmentId.value = data.department_id || null
       departmentName.value = data.department_name || ''
 
@@ -374,6 +378,7 @@ export const useUserStore = defineStore('user', () => {
       phoneNumber.value = userData.phone_number || ''
       avatar.value = userData.avatar || ''
       userRole.value = userData.role
+      identity.value = userData.identity || ''
       departmentId.value = userData.department_id || null
       departmentName.value = userData.department_name || ''
 
@@ -427,6 +432,7 @@ export const useUserStore = defineStore('user', () => {
     phoneNumber,
     avatar,
     userRole,
+    identity,
     departmentId,
     departmentName,
 

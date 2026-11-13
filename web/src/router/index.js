@@ -210,6 +210,7 @@ router.beforeEach(async (to) => {
       userStore.username = 'admin'
       userStore.uid = 'admin'
       userStore.userRole = 'superadmin'
+      userStore.identity = 'elder'
       localStorage.setItem('user_token', 'demo-token')
     }
     return true
