@@ -54,7 +54,7 @@ function handleConfirm() {
           </p>
           <p class="demo-notice-keypoint">
             <span class="demo-notice-bullet">②</span>
-            每条 AI 回复顶部会出现<strong class="demo-notice-strong">「静态演示」橙色徽章</strong>，请注意识别
+            每条 AI 回复顶部会出现<strong class="demo-notice-strong">「静态演示」徽章</strong>，请注意识别
           </p>
           <p class="demo-notice-keypoint">
             <span class="demo-notice-bullet">③</span>
@@ -80,7 +80,7 @@ function handleConfirm() {
 
 .demo-notice-icon {
   font-size: 48px;
-  color: #fa8c16;
+  color: var(--main-500);
   margin-bottom: 16px;
 }
 
@@ -113,12 +113,12 @@ function handleConfirm() {
 }
 
 .demo-notice-hint {
-  color: #fa8c16;
+  color: var(--main-600);
   font-size: 13px;
-  background: #fff7e6;
+  background: var(--main-50);
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid #ffd591;
+  border: 1px solid var(--main-200);
 }
 
 .demo-notice-footer {
@@ -149,7 +149,7 @@ function handleConfirm() {
 }
 
 .demo-notice-bullet {
-  color: #fa8c16;
+  color: var(--main-500);
   font-weight: 700;
   flex-shrink: 0;
 }

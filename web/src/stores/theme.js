@@ -14,7 +14,7 @@ export const useThemeStore = defineStore('theme', () => {
   const savedTheme = localStorage.getItem('theme')
   const isDark = ref(savedTheme === 'dark')
   const savedScheme = localStorage.getItem('color_scheme')
-  const colorScheme = ref(COLOR_SCHEMES[savedScheme] ? savedScheme : 'amber')
+  const colorScheme = ref(COLOR_SCHEMES[savedScheme] ? savedScheme : 'teal')
 
   // 公共主题配置
   const commonTheme = computed(() => ({
@@ -71,9 +71,9 @@ export const useThemeStore = defineStore('theme', () => {
     }
   }
 
-  // 更新 document 的色系属性
+  // 更新 document 的色系属性（青碧为默认色系，走 :root 不加属性，避免首屏闪烁）
   function updateDocumentColorScheme() {
-    if (colorScheme.value === 'amber') {
+    if (colorScheme.value === 'teal') {
       document.documentElement.removeAttribute('data-color-scheme')
     } else {
       document.documentElement.setAttribute('data-color-scheme', colorScheme.value)

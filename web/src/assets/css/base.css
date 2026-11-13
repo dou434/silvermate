@@ -1,28 +1,29 @@
 /* color palette from <https://github.com/vuejs/theme> */
 /* https://material-foundation.github.io/material-theme-builder/ */
+/* 默认色系：青碧（清爽专业 · 养老照护），琥珀/海蓝/翠绿经 [data-color-scheme] 覆盖 */
 :root {
-  --main-1000: #2a1207;
-  --main-900: #5c2104;
-  --main-800: #8a3308;
-  --main-700: #b3500b;
-  --main-600: #d46b08;
-  --main-500: #fa8c16;
-  --main-400: #ffa940;
-  --main-300: #ffc068;
-  --main-200: #ffd591;
-  --main-100: #ffe7ba;
-  --main-50: #fff7e6;
-  --main-40: #fffbf0;
-  --main-30: #fffdf8;
-  --main-20: #fffcf5;
-  --main-10: #fffdf5;
-  --main-5: #fffefa;
-  --main-1: #fffefa;
+  --main-1000: #001a17;
+  --main-900: #002d27;
+  --main-800: #004d40;
+  --main-700: #00695c;
+  --main-600: #00796b;
+  --main-500: #00897b;
+  --main-400: #009688;
+  --main-300: #26a69a;
+  --main-200: #80cbc4;
+  --main-100: #b2dfdb;
+  --main-50: #e0f2f1;
+  --main-40: #eff8f7;
+  --main-30: #f5fbfa;
+  --main-20: #fafdfa;
+  --main-10: #fcfdfd;
+  --main-5: #fdfffe;
+  --main-1: #fefffe;
   --main-0: #ffffff;
 
   /* 保留原有的 main 变量 */
   --main-color: var(--main-700);
-  --main-bright: #fa8c16;
+  --main-bright: #009688;
 
   --gray-10000: #000000; /* 保持纯黑 */
   --gray-2000: #0c0d0d; /* 更精致的暗灰，用于极深背景 */
@@ -233,26 +234,26 @@
   --main-bright: #4caf50;
 }
 
-/* 青碧 */
-:root[data-color-scheme="teal"] {
-  --main-1000: #001a17;
-  --main-900: #002d27;
-  --main-800: #004d40;
-  --main-700: #00695c;
-  --main-600: #00796b;
-  --main-500: #00897b;
-  --main-400: #009688;
-  --main-300: #26a69a;
-  --main-200: #80cbc4;
-  --main-100: #b2dfdb;
-  --main-50: #e0f2f1;
-  --main-40: #eff8f7;
-  --main-30: #f5fbfa;
-  --main-20: #fafdfa;
-  --main-10: #fcfdfd;
-  --main-5: #fdfffe;
-  --main-1: #fefffe;
-  --main-bright: #009688;
+/* 琥珀（曾经的默认色系，保留为可选项） */
+:root[data-color-scheme="amber"] {
+  --main-1000: #2a1207;
+  --main-900: #5c2104;
+  --main-800: #8a3308;
+  --main-700: #b3500b;
+  --main-600: #d46b08;
+  --main-500: #fa8c16;
+  --main-400: #ffa940;
+  --main-300: #ffc068;
+  --main-200: #ffd591;
+  --main-100: #ffe7ba;
+  --main-50: #fff7e6;
+  --main-40: #fffbf0;
+  --main-30: #fffdf8;
+  --main-20: #fffcf5;
+  --main-10: #fffdf5;
+  --main-5: #fffefa;
+  --main-1: #fffefa;
+  --main-bright: #fa8c16;
 }
 
 /* Page Padding 响应式断点 */

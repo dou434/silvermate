@@ -1735,7 +1735,7 @@ defineExpose({
   }
 
   .query-match {
-    color: #fa8c16; /* 明亮温润的金橘色 */
+    color: var(--main-500);
     font-weight: 700;
   }
 

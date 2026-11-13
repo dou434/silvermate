@@ -382,19 +382,19 @@
 
 /* ===== 静态演示水印（仅在 Demo 模式下出现）=====
    出现在每条 AI 回复最上方，让用户一眼识别这是预设示例而非真实 AI 生成。
-   使用琥珀主题与适老化样式协调，颜色与品牌一致。 */
+   颜色跟随主题色系，与品牌一致。 */
 .demo-watermark {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
   margin-bottom: 14px;
-  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
-  border: 1.5px dashed #fa8c16;
+  background: linear-gradient(135deg, var(--main-50) 0%, var(--main-100) 100%);
+  border: 1.5px dashed var(--main-500);
   border-radius: 10px;
   font-size: 14px;
   line-height: 1.6;
-  color: #874d00;
+  color: var(--main-700);
 }
 
 .demo-watermark-tag {
@@ -402,7 +402,7 @@
   align-items: center;
   flex-shrink: 0;
   padding: 3px 10px;
-  background: #fa8c16;
+  background: var(--main-500);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -413,6 +413,6 @@
 
 .demo-watermark-text {
   flex: 1;
-  color: #874d00;
+  color: var(--main-700);
 }
 

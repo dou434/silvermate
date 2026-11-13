@@ -76,6 +76,19 @@
           </div>
         </a-form-item>
 
+        <!-- 深色模式 -->
+        <a-form-item label="深色模式">
+          <a-switch
+            v-model:checked="isDark"
+            size="large"
+            checked-children="开"
+            un-checked-children="关"
+          />
+          <div class="font-size-preview">
+            夜里看屏幕不刺眼，界面换成深色；随时可切回浅色
+          </div>
+        </a-form-item>
+
         <!-- 保存按钮 -->
         <div style="display: flex; gap: 12px; margin-top: 24px;">
           <a-button type="primary" size="large" style="flex: 1; min-height: 48px;" @click="handleSave">
@@ -102,6 +115,11 @@ const tts = useTTS()
 const themeStore = useThemeStore()
 const currentColorScheme = computed(() => themeStore.colorScheme)
 const setColorScheme = (key) => themeStore.setColorScheme(key)
+// 与主题色一致：即拨即生效，不必等「保存」；localStorage 由 store 写入
+const isDark = computed({
+  get: () => themeStore.isDark,
+  set: (v) => themeStore.setTheme(v),
+})
 
 const props = defineProps({
   open: { type: Boolean, default: false },

@@ -211,36 +211,8 @@
             </div>
           </div>
 
-          <div v-if="isMilvus && activeTab === 'graph'" class="tab-panel">
-            <KnowledgeGraphSection
-              :visible="true"
-              :active="activeTab === 'graph'"
-              @toggle-visible="() => {}"
-            />
-          </div>
-
           <div v-if="isMilvus && activeTab === 'mindmap'" class="tab-panel">
             <MindMapSection v-if="kbId" :kb-id="kbId" ref="mindmapSectionRef" />
-          </div>
-
-          <div v-if="isMilvus && activeTab === 'evaluation'" class="tab-panel">
-            <RAGEvaluationTab
-              v-if="kbId"
-              :kb-id="kbId"
-              @switch-to-benchmarks="activeTab = 'benchmarks'"
-            />
-          </div>
-
-          <div v-if="isMilvus && activeTab === 'benchmarks'" class="tab-panel">
-            <div class="benchmark-management-container">
-              <div class="benchmark-content">
-                <EvaluationBenchmarks
-                  v-if="kbId && isEvaluationSupported"
-                  :kb-id="kbId"
-                  @benchmark-selected="activeTab = 'evaluation'"
-                />
-              </div>
-            </div>
           </div>
         </main>
       </div>
@@ -372,8 +344,6 @@ import { useTaskerStore } from '@/stores/tasker'
 import { useUserStore } from '@/stores/user'
 import {
   ArrowLeft,
-  BarChart3,
-  ClipboardList,
   Copy,
   Database as DatabaseIcon,
   FileUp,
@@ -382,7 +352,6 @@ import {
   Hash,
   LoaderCircle,
   Map as MapIcon,
-  Network,
   Pencil,
   Save,
   Search,
@@ -393,11 +362,8 @@ import { message, Modal } from 'ant-design-vue'
 import FileTable from '@/components/FileTable.vue'
 import FileDetailModal from '@/components/FileDetailModal.vue'
 import FileUploadModal from '@/components/FileUploadModal.vue'
-import KnowledgeGraphSection from '@/components/KnowledgeGraphSection.vue'
 import QuerySection from '@/components/QuerySection.vue'
 import MindMapSection from '@/components/MindMapSection.vue'
-import RAGEvaluationTab from '@/components/RAGEvaluationTab.vue'
-import EvaluationBenchmarks from '@/components/EvaluationBenchmarks.vue'
 import SearchConfigPanel from '@/components/SearchConfigPanel.vue'
 import AiTextarea from '@/components/AiTextarea.vue'
 import ShareConfigForm from '@/components/ShareConfigForm.vue'
@@ -433,7 +399,6 @@ const isNotionKb = computed(() => kbType.value === 'notion')
 const isConnector = computed(
   () => isCurrentDatabaseLoaded.value && kbUtils.isReadOnlyDatabase(database.value)
 )
-const isEvaluationSupported = computed(() => isMilvus.value)
 const kbTypeIcon = computed(() => getKbTypeIcon(kbType.value || 'milvus'))
 
 const databaseSubtitle = computed(() => {
@@ -452,10 +417,7 @@ const tabs = computed(() => {
     return [
       { key: 'filetable', label: '文件管理', icon: FileText },
       { key: 'query', label: '检索测试', icon: Search },
-      { key: 'graph', label: '知识图谱', icon: Network },
-      { key: 'mindmap', label: '知识导图', icon: MapIcon },
-      { key: 'evaluation', label: 'RAG 评估', icon: BarChart3 },
-      { key: 'benchmarks', label: '评估基准', icon: ClipboardList }
+      { key: 'mindmap', label: '知识导图', icon: MapIcon }
     ]
   }
 
@@ -1440,8 +1402,7 @@ onMounted(() => {
   }
 }
 
-.query-section,
-.graph-section {
+.query-section {
   .panel-section();
 
   .content {
@@ -1449,22 +1410,5 @@ onMounted(() => {
     flex: 1;
     overflow: hidden;
   }
-}
-
-.graph-section {
-  border: 1px solid var(--gray-100);
-  border-radius: 12px;
-}
-
-.benchmark-management-container {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.benchmark-content {
-  flex: 1;
-  overflow: hidden;
-  min-height: 0;
 }
 </style>

@@ -1,27 +1,27 @@
-/* 深色模式 */
+/* 深色模式（默认色系：青碧，与浅色 :root 对应） */
 :root.dark {
-  --main-1000: #fff7e6;
-  --main-900: #ffe7ba;
-  --main-800: #ffd591;
-  --main-700: #ffc068;
-  --main-600: #ffa940;
-  --main-500: #fa8c16;
-  --main-400: #d46b08;
-  --main-300: #b3500b;
-  --main-200: #8a3308;
-  --main-100: #5c2104;
-  --main-50: #2a1207;
-  --main-40: #1a0a04;
-  --main-30: #120603;
-  --main-20: #0d0402;
-  --main-10: #080201;
-  --main-5: #050100;
-  --main-1: #030000;
+  --main-1000: #e0f2f1;
+  --main-900: #b2dfdb;
+  --main-800: #80cbc4;
+  --main-700: #4db6ac;
+  --main-600: #26a69a;
+  --main-500: #009688;
+  --main-400: #00897b;
+  --main-300: #00796b;
+  --main-200: #00695c;
+  --main-100: #004d40;
+  --main-50: #002d27;
+  --main-40: #00221e;
+  --main-30: #001a17;
+  --main-20: #001411;
+  --main-10: #000d0a;
+  --main-5: #000806;
+  --main-1: #000403;
   --main-0: #000000;
 
   /* 保留原有的 main 变量 */
-  --main-color: #fa8c16;
-  --main-bright: #ffa940;
+  --main-color: #009688;
+  --main-bright: #26a69a;
 
   --gray-10000: #fafafa;
   --gray-2000: #f8fafa;
@@ -183,27 +183,27 @@
   --main-bright: #66bb6a;
 }
 
-:root.dark[data-color-scheme="teal"] {
-  --main-1000: #e0f2f1;
-  --main-900: #b2dfdb;
-  --main-800: #80cbc4;
-  --main-700: #4db6ac;
-  --main-600: #26a69a;
-  --main-500: #009688;
-  --main-400: #00897b;
-  --main-300: #00796b;
-  --main-200: #00695c;
-  --main-100: #004d40;
-  --main-50: #002d27;
-  --main-40: #00221e;
-  --main-30: #001a17;
-  --main-20: #001411;
-  --main-10: #000d0a;
-  --main-5: #000806;
-  --main-1: #000403;
+:root.dark[data-color-scheme="amber"] {
+  --main-1000: #fff7e6;
+  --main-900: #ffe7ba;
+  --main-800: #ffd591;
+  --main-700: #ffc068;
+  --main-600: #ffa940;
+  --main-500: #fa8c16;
+  --main-400: #d46b08;
+  --main-300: #b3500b;
+  --main-200: #8a3308;
+  --main-100: #5c2104;
+  --main-50: #2a1207;
+  --main-40: #1a0a04;
+  --main-30: #120603;
+  --main-20: #0d0402;
+  --main-10: #080201;
+  --main-5: #050100;
+  --main-1: #030000;
   --main-0: #000000;
-  --main-color: #009688;
-  --main-bright: #26a69a;
+  --main-color: #fa8c16;
+  --main-bright: #ffa940;
 }
 
 :root.dark .markmap {

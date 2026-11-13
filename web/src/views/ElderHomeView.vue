@@ -530,7 +530,7 @@ onUnmounted(() => {
   }
 
   &.is-delivered {
-    border-left-color: #fa8c16;
+    border-left-color: var(--main-500);
   }
 
   &.is-missed {

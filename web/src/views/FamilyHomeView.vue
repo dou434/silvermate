@@ -430,11 +430,11 @@ const statsRateText = computed(() => {
 
 const statsRateClass = computed(() => rateLevel(stats.value?.summary.rate))
 
-/** 完成率分档：≥80% 好、≥50% 一般、其余偏低。null 表示还没有可统计的记录。 */
+/** 完成率分档：≥80% 良好、60-79% 一般、<60% 偏低。null 表示还没有可统计的记录。 */
 function rateLevel(rate) {
   if (rate === null || rate === undefined) return 'is-none'
   if (rate >= 0.8) return 'is-good'
-  if (rate >= 0.5) return 'is-mid'
+  if (rate >= 0.6) return 'is-mid'
   return 'is-low'
 }
 
@@ -854,7 +854,7 @@ onUnmounted(() => {
 /* 近 7 天依从率 */
 .stats-card {
   margin-bottom: 20px;
-  padding: 18px 20px 12px;
+  padding: 20px 24px 16px;
   border: 1px solid var(--gray-100, #eff2f2);
   border-radius: 14px;
   background: var(--gray-25, #f8fafa);
@@ -882,15 +882,15 @@ onUnmounted(() => {
   color: var(--gray-900, #1e1f1f);
 
   &.is-good {
-    color: #52c41a;
+    color: var(--color-success-500);
   }
 
   &.is-mid {
-    color: #faad14;
+    color: var(--color-warning-500);
   }
 
   &.is-low {
-    color: #ff4d4f;
+    color: var(--color-error-500);
   }
 
   &.is-none {
@@ -924,11 +924,11 @@ onUnmounted(() => {
   background: var(--gray-400, #bdbfbf);
 
   &.is-done {
-    background: #52c41a;
+    background: var(--color-success-500);
   }
 
   &.is-failed {
-    background: #ff4d4f;
+    background: var(--color-error-500);
   }
 
   &.is-pending {
@@ -944,8 +944,8 @@ onUnmounted(() => {
 
 .stats-bars {
   display: flex;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .bar-col {
@@ -953,7 +953,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .bar-track {
@@ -974,15 +974,15 @@ onUnmounted(() => {
   transition: height 0.3s ease;
 
   &.is-good {
-    background: #52c41a;
+    background: var(--color-success-500);
   }
 
   &.is-mid {
-    background: #faad14;
+    background: var(--color-warning-500);
   }
 
   &.is-low {
-    background: #ff4d4f;
+    background: var(--color-error-500);
   }
 
   &.is-empty {
