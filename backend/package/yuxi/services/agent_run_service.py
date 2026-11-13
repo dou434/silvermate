@@ -32,6 +32,7 @@ from yuxi.models.providers.cache import model_cache
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_repository import TERMINAL_RUN_STATUSES, AgentRunRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
+from yuxi.services.chat_token_quota_service import ensure_daily_chat_token_quota
 from yuxi.services.input_message_service import (
     AgentRunInputMessage,
     build_resume_input_message,
@@ -390,6 +391,9 @@ async def create_agent_run_view(
     )
     if scope.existing_run:
         return _build_run_response(scope.existing_run)
+
+    if run_type == "chat":
+        await ensure_daily_chat_token_quota(db=db, uid=current_uid)
 
     if run_type == "resume":
         resolved_model_spec = scope.parent_run.input_payload["model_spec"]

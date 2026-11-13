@@ -231,6 +231,9 @@ class _UserResult:
     def scalar_one_or_none(self):
         return SimpleNamespace(uid="user-1", role="user")
 
+    def scalar(self):
+        return 0
+
 
 class _CreateRunDb:
     def __init__(
@@ -716,6 +719,30 @@ async def test_create_agent_run_persists_input_before_enqueue(monkeypatch: pytes
     assert db.added[0].extra_metadata["raw_message"]["content"] == "hello"
     assert "run_id" not in db.added[0].extra_metadata
     assert "run_type" not in db.added[0].extra_metadata
+
+
+@pytest.mark.asyncio
+async def test_create_agent_run_rejects_when_daily_token_quota_exhausted(monkeypatch: pytest.MonkeyPatch):
+    db = _patch_agent_run_creation(monkeypatch)
+
+    async def reject_quota(**_kwargs):
+        raise agent_run_service.HTTPException(status_code=429, detail="今日 AI 问答额度已用完")
+
+    monkeypatch.setattr(agent_run_service, "ensure_daily_chat_token_quota", reject_quota)
+
+    with pytest.raises(agent_run_service.HTTPException) as exc:
+        await agent_run_service.create_agent_run_view(
+            input_message=_chat_input("hello"),
+            agent_slug="default",
+            thread_id="thread-1",
+            meta={"request_id": "req-1"},
+            current_uid="user-1",
+            db=db,
+        )
+
+    assert exc.value.status_code == 429
+    assert db.created_run_kwargs is None
+    assert db.added == []
 
 
 @pytest.mark.asyncio
